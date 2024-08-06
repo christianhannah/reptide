@@ -15,8 +15,15 @@ To install Reptide, follow these steps:
 
 ### Prerequisites
 
-- 
+Make sure you have the following packages installed:
+- numpy, scipy, astropy, tqdm, mgefit
 
-### Steps
+This can be accomplished with the requirements.txt file, which gives specific version information.
 
-1. 
+### Using pip
+
+pip install git+https://github.com/christianhannah/reptide.git
+
+## Examples
+
+Detailed example usage scripts can be found in the Examples folder.
