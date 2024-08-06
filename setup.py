@@ -19,7 +19,7 @@ setup(
         'tqdm',
         'mgefit'
     ],
-    url='https://github.com/christianhhannah/reptide',  # Replace with your GitHub URL
+    url='https://github.com/christianhhannah/reptide.git',  # Replace with your GitHub URL
     author='Christian H. Hannah',                 # Replace with your name
     author_email='hannah.christian@utah.edu',  # Replace with your email
     description='This software is designed to compute the expected TDE rate for a galaxy based on 2-body relaxation under the assumption of spherical symmetry.',
