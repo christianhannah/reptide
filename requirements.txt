@@ -1,0 +1,5 @@
+numpy==1.26.4
+scipy==1.13.0
+astropy==5.3.4
+tqdm==4.66.2
+mgefit==5.0.15
