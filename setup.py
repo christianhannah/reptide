@@ -6,12 +6,12 @@ Created on Mon Aug  5 15:17:09 2024
 @author: christian
 """
 
-from setuptools import setup, find_packages
+from setuptools import setup
 
 setup(
     name='reptide',                  # Replace with your project's name
     version='0.1.0',                    # Replace with your project's version
-    packages=find_packages(),           # Automatically find packages in the project
+    packages=['reptide'],           # Automatically find packages in the project
     install_requires=[                  # List your project's dependencies here
         'numpy',
         'scipy',
