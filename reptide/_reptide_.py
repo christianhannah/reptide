@@ -16,7 +16,7 @@ from astropy.io import fits
 from tqdm import tqdm
 import time
 import multiprocessing as mp
-import istarmap
+import reptide.istarmap as istarmap
 from mgefit.mge_fit_1d import mge_fit_1d
 import matplotlib.pyplot as plt
 
