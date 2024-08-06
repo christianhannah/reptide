@@ -11,7 +11,7 @@ from setuptools import setup, find_packages
 setup(
     name='reptide',                  # Replace with your project's name
     version='0.1.0',                    # Replace with your project's version
-    packages=find_packages(),           # Automatically find packages in the project
+    packages=['_reptide_'],           # Automatically find packages in the project
     install_requires=[                  # List your project's dependencies here
         'numpy',
         'scipy',
