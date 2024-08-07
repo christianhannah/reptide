@@ -20,7 +20,6 @@ import reptide.istarmap as istarmap
 from mgefit.mge_fit_1d import mge_fit_1d
 import matplotlib.pyplot as plt
 
-
 # CONSTANTS
 PC_TO_M = 3.08567758128e16 
 M_SOL =  1.989e30 # kg
@@ -28,7 +27,6 @@ R_SOL = 696.34e6 # m
 G = 6.6743e-11 # m^3 s^-2 kg^-1
 ARCSEC_TO_RADIAN = 4.8481e-6
 SEC_PER_YR = 3.154e+7
-
 
 # ============================ FUNCTIONS ======================================
 
@@ -549,7 +547,7 @@ def read_dat_file(filename):
 # Function to create the input fits file for an analytic run
 
 def create_analytic_input_table(names, slopes, rho_5pc, M_BHs, decay_start, decay_width, bw_cusps, bw_rads,
-                      no_print=np.array([True]), M_min=np.array([0.08]), M_max=np.array([1]), smooth=np.array([0.1]), filename='analytic_REPTiDE_input.fits'):
+                      no_print=np.array([True]), M_min=np.array([0.08]), M_max=np.array([1]), smooth=np.array([0.1])):
     """
     Create a FITS table with specified columns and values.
 
@@ -580,29 +578,37 @@ def create_analytic_input_table(names, slopes, rho_5pc, M_BHs, decay_start, deca
     col7 = fits.Column(name='bw_cusp', format='L', array=bw_cusps)
     col8 = fits.Column(name='bw_rad', format='D', array=bw_rads)
     
-    if no_print.size == 1 and isinstance(names, np.ndarray):
-        col9 = fits.Column(name='no_print', format='L', array=np.ones_like(names).astype(bool) * no_print)
-    else:
-        col9 = fits.Column(name='no_print', format='L', array=no_print)
-    if M_min.size == 1 and isinstance(names, np.ndarray):
-        col10 = fits.Column(name='M_min', format='D', array=np.ones_like(names).astype(float) * M_min)
-    else:
-        col10 = fits.Column(name='M_min', format='D', array=M_min)
-    if M_max.size == 1 and isinstance(names, np.ndarray):
-        col11 = fits.Column(name='M_max', format='D', array=np.ones_like(names).astype(float) * M_max)
-    else:
-        col11 = fits.Column(name='M_max', format='D', array=M_max)
-    if smooth.size == 1 and isinstance(names, np.ndarray):
-        col12 = fits.Column(name='smooth', format='D', array=np.ones_like(names).astype(float) * smooth)
-    else:
-        col12 = fits.Column(name='smooth', format='D', array=smooth)
+# =============================================================================
+#     if no_print.size == 1 and isinstance(names, np.ndarray):
+#         col9 = fits.Column(name='no_print', format='L', array=np.ones_like(names).astype(bool) * no_print)
+#     else:
+#         col9 = fits.Column(name='no_print', format='L', array=no_print)
+#     if M_min.size == 1 and isinstance(names, np.ndarray):
+#         col10 = fits.Column(name='M_min', format='D', array=np.ones_like(names).astype(float) * M_min)
+#     else:
+#         col10 = fits.Column(name='M_min', format='D', array=M_min)
+#     if M_max.size == 1 and isinstance(names, np.ndarray):
+#         col11 = fits.Column(name='M_max', format='D', array=np.ones_like(names).astype(float) * M_max)
+#     else:
+#         col11 = fits.Column(name='M_max', format='D', array=M_max)
+#     if smooth.size == 1 and isinstance(names, np.ndarray):
+#         col12 = fits.Column(name='smooth', format='D', array=np.ones_like(names).astype(float) * smooth)
+#     else:
+#         col12 = fits.Column(name='smooth', format='D', array=smooth)
+# =============================================================================
 
+    col9 = fits.Column(name='no_print', format='L', array=np.ones_like(names).astype(bool) * no_print)
+    col10 = fits.Column(name='M_min', format='D', array=np.ones_like(names).astype(float) * M_min)
+    col11 = fits.Column(name='M_max', format='D', array=np.ones_like(names).astype(float) * M_max)
+    col12 = fits.Column(name='smooth', format='D', array=np.ones_like(names).astype(float) * smooth)
     # Create the FITS table with the defined columns
     cols = fits.ColDefs([col1, col2, col3, col4, col5, col6, col7, col8, col9, col10, col11, col12])
     hdu = fits.BinTableHDU.from_columns(cols)
 
     # Write the FITS table to a file
-    hdu.writeto(filename, overwrite=True)
+    #hdu.writeto(filename, overwrite=True)
+
+    return Table.read(hdu)
 
 # =============================================================================
 
@@ -613,7 +619,7 @@ def create_analytic_input_table(names, slopes, rho_5pc, M_BHs, decay_start, deca
 
 def create_discrete_input_table(names, rads, dens, M_BH, sflag, s, bw_cusp, 
                                 no_print=np.array([True]), M_min=np.array([0.08]), 
-                                M_max=np.array([1]), filename='discrete_REPTiDE_input.fits'):
+                                M_max=np.array([1])):
     """)
     Create a FITS table with specified columns and values.
 
@@ -634,25 +640,29 @@ def create_discrete_input_table(names, rads, dens, M_BH, sflag, s, bw_cusp,
     None
     """
     # Define the columns for the FITS table
-    col1 = fits.Column(name='name', format='20A', array=names)
-    col2 = fits.Column(name='M_BH', format='D', array=M_BH)
-    col3 = fits.Column(name='sflag', format='L', array=sflag)
-    col4 = fits.Column(name='s', format='D', array=s)
-    col5 = fits.Column(name='bw_cusp', format='D', array=bw_cusp)
+    col1 = fits.Column(name='name', format='20A', array=np.array(names))
+    col2 = fits.Column(name='M_BH', format='D', array=np.array(M_BH))
+    col3 = fits.Column(name='sflag', format='L', array=np.array(sflag))
+    col4 = fits.Column(name='s', format='D', array=np.array(s))
+    col5 = fits.Column(name='bw_cusp', format='D', array=np.array(bw_cusp))
     
-    if no_print.size == 1 and isinstance(names, np.ndarray):
-        col6 = fits.Column(name='no_print', format='L', array=np.ones_like(names).astype(bool) * no_print)
-    else:
-        col6 = fits.Column(name='no_print', format='L', array=no_print)
-    if M_min.size == 1 and isinstance(names, np.ndarray):
-        col7 = fits.Column(name='M_min', format='D', array=np.ones_like(names).astype(float) * M_min)
-    else:
-        col7 = fits.Column(name='M_min', format='D', array=M_min)
-    if M_max.size == 1 and isinstance(names, np.ndarray):
-        col8 = fits.Column(name='M_max', format='D', array=np.ones_like(names).astype(float) * M_max)
-    else:
-        col8 = fits.Column(name='M_max', format='D', array=M_max)
-    
+# =============================================================================
+#     if no_print.size == 1 and isinstance(names, np.ndarray):
+#         col6 = fits.Column(name='no_print', format='L', array=np.ones_like(names).astype(bool) * no_print)
+#     else:
+#         col6 = fits.Column(name='no_print', format='L', array=np.array(no_print))
+#     if M_min.size == 1 and isinstance(names, np.ndarray):
+#         col7 = fits.Column(name='M_min', format='D', array=np.ones_like(names).astype(float) * M_min)
+#     else:
+#         col7 = fits.Column(name='M_min', format='D', array=np.array(M_min))
+#     if M_max.size == 1 and isinstance(names, np.ndarray):
+#         col8 = fits.Column(name='M_max', format='D', array=np.ones_like(names).astype(float) * M_max)
+#     else:
+#         col8 = fits.Column(name='M_max', format='D', array=np.array(M_max))
+# =============================================================================
+    col6 = fits.Column(name='no_print', format='L', array=np.ones_like(names).astype(bool) * no_print)
+    col7 = fits.Column(name='M_min', format='D', array=np.ones_like(names).astype(float) * M_min)
+    col8 = fits.Column(name='M_max', format='D', array=np.ones_like(names).astype(float) * M_max)
     
     # Convert rads and dens to variable-length arrays
     rads_vla = fits.Column(name='rads', format='PE()', array=np.array(rads,dtype=float))
@@ -662,9 +672,12 @@ def create_discrete_input_table(names, rads, dens, M_BH, sflag, s, bw_cusp,
     hdu = fits.BinTableHDU.from_columns(cols)
 
     # Write the FITS table to a file
-    hdu.writeto(filename, overwrite=True)
+    #hdu.writeto(filename, overwrite=True)
+    
+    return Table.read(hdu)
 
 # =============================================================================
+
 
 # =============================================================================
 # Functions to compute the decay width necessary to ensure correct galaxy mass in
@@ -1354,7 +1367,7 @@ def get_TDE_rate_discrete(name,dens_rad,dens,M_BH,sflag,s,bw_cusp,
                         psi_t_ind = find_nearest(psi_r,psi_t[i])
     
                         if psi_r[psi_t_ind]-psi_t[i] >= psi_t[i]*0.001:
-                            raise CustomError('ERROR: Finer grid needed for initial psi_r/psi_t match; Increase num_rad at line 1321 ***')
+                            raise ValueError('ERROR: Finer grid needed for initial psi_r/psi_t match; Increase num_rad at line 1321 ***')
     
                         d_rho_d_psi_t[i] = (rho_r[psi_t_ind-1]-rho_r[psi_t_ind+1])/(psi_r[psi_t_ind-1]-psi_r[psi_t_ind+1])
                     
@@ -1466,7 +1479,7 @@ def get_TDE_rate_discrete(name,dens_rad,dens,M_BH,sflag,s,bw_cusp,
                     new_J_c_r = 10**safe_interp(np.log10(new_r_ref_LC),np.log10(r_ref),np.log10(J_c_r))
                     new_r_ind_LC = find_nearest(new_eps,orb_ens[i])
                     if np.abs(new_eps[new_r_ind_LC] - orb_ens[i])/orb_ens[i] >= 0.001:
-                        raise CustomError('*** Error in R_LCcalculation: R_LC energy value is greater then energy array value by > 0.1%. Finer sampling needed. Adjust r_ref at line 1506 ***')
+                        raise ValueError('*** Error in R_LCcalculation: R_LC energy value is greater then energy array value by > 0.1%. Finer sampling needed. Adjust r_ref at line 1506 ***')
                     new_R_LC_r = 10**safe_interp(np.log10(new_r_ref_LC),np.log10(r_ref),np.log10(R_LC_r))
                     R_LC_e[i] = new_R_LC_r[new_r_ind_LC]
                     J_c_e[i] = new_J_c_r[new_r_ind_LC]
@@ -1673,9 +1686,9 @@ def get_TDE_rate_discrete(name,dens_rad,dens,M_BH,sflag,s,bw_cusp,
 
 
 
-def TDE_rate(filename,analytic,cpu_count=mp.cpu_count()):
+def TDE_rate(input_data,analytic,cpu_count):
 
-    input_data = Table.read(filename)[0:5]
+    input_data = input_data[0:5]
     
     print()
     print('Beginning TDE rate computation...')
@@ -1755,77 +1768,77 @@ def TDE_rate(filename,analytic,cpu_count=mp.cpu_count()):
     return output_table
 
 
-
-def execute_rate_estimation(in_fn, out_fn):
+def run_reptide(in_table, analytic):
     
     print()
-    print('Welcome to REPTiDE!')
+    print('Beginning TDE rate computation...')
     print()
-
-    idat = Table.read(in_fn)
-
-    if len(idat.columns) == 10:
-        analytic = False
+    start = time.time()
+    
+    if analytic:
+        output_table = get_TDE_rate_analytic(in_table[0][0],in_table[0][1],in_table[0][2],
+                                                 in_table[0][3],in_table[0][4],in_table[0][5],
+                                                 in_table[0][6],in_table[0][7],in_table[0][8],
+                                                 in_table[0][9],in_table[0][10],in_table[0][11])
+            
+                
     else:
-        analytic = True
-
-    print('Got it! Starting the run: {} galaxies'.format(len(idat)))
+        output_table = get_TDE_rate_discrete(in_table[0][0],in_table[0][1],in_table[0][2],
+                                                 in_table[0][3],in_table[0][4],in_table[0][5],
+                                                 in_table[0][6],in_table[0][7],in_table[0][8],
+                                                 in_table[0][9])
 
     
-    out_table = TDE_rate(in_fn, analytic)
+    end = time.time()
+    print()    
+    print('Done.')
+    print()
+    print('Runtime: {:.2f} minutes / {:.2f} hours'.format(round(end-start,3)/60,
+                                                          round(end-start,3)/3600))
+    print()
+
+    return output_table
+
+
+def main(in_table, out_fn, cpu_count=mp.cpu_count()):
+    
+    out_table = TDE_rate(in_table, analytic, cpu_count)
     
     out_table.write(out_fn, format='fits', overwrite=True)
     
     print('Output saved as: '+out_fn)
+    
+    return out_table
 
 
 
 if __name__ == '__main__':
     
     
-    #### USER DEFINED SECTION ###
-    
-    # output filename
-    out_fn = 'REPTiDE_output.fits'
-    in_fn_discrete = 'our_galaxies_input_discrete.fits'
-    in_fn_analytic = 'our_galaxies_input_analytic.fits'
-    
-    
-# =============================================================================
-#     # To use a 1D SB profile as input, you must first perform an MGE fit to 
-#     # convert to a 3D stellar density profile.
-#     radii = np.zeros((10)) # in arcsec
-#     SBs = np.zeros((10)) # in solar luminosties/pc^2
-#     M_L = 0 # mass-to-light ratio for the system
-#     distance = 0 # distance in pc
-#     ax_ratio = 1 # observed axial ratio
-#     inc = 90 # inclination angle
-#     
-#     rads, dens, gausses, summed_gauss = SB_to_Density(radii,SBs,M_L,distance,ax_ratio=1,inc=90)
-# =============================================================================
-    
-    
-    # Define arrays of inputs for REPTiDE:
-    
-    # =============================================================================
-    # functions using relations from Reines et al. 2015
-    def get_BH_mass_lt(m_gal):
-        mean = 7.45 + 1.05*np.log10(m_gal/10**11) # gives log(M_BH) 
-        return mean
-    def get_BH_mass_et(m_gal):
-        mean = 8.95 + 1.40*np.log10(m_gal/10**11) # gives log(M_BH)
-        return mean
-    # =============================================================================
+    ###############################################################################
+    ###############################################################################
+    ########################## USER DEFINED SECTION ###############################
+    ###############################################################################
+    ###############################################################################
 
-    model_gal_filename = '../../Result_Tables/master_sample.fits'
-    gal_data = Table.read(model_gal_filename) 
+    # output filename (specify entire path)
+    out_fn = 'reptide_output.fits'
+
+
+
+    # specify the input type
+    analytic = False
+
+
+    # =================== DISCRETE INPUT PARAMETER ARRAYS ===========================
+
+    model_gal_filename = './master_sample.fits'
+    gal_data = Table.read(model_gal_filename, unit_parse_strict='silent') 
 
     select = np.ones(len(gal_data)).astype(bool)
     name = gal_data['name'][select]
     slope = np.abs(gal_data['slope'][select])
-    rho_5pc = gal_data['dens_at_5pc'][select]*M_SOL/PC_TO_M**3
-    typ = gal_data['type'][select]
-    galm = 10**gal_data['logmass'][select]
+    M_BH = gal_data['mbh'][select]
     rads = 10**gal_data['lograd'][select]
     dens = 10**gal_data['logdens'][select]
 
@@ -1835,40 +1848,64 @@ if __name__ == '__main__':
             bw_cusp[i] = True
         else:
             bw_cusp[i] = False
-    
-    bw_rads = np.ones(len(name))*5.53285169288588e+16 # 1.79 pc in m (median of just BW sample)
-
-
-    M_BH = gal_data['mbh'][select]
 
     # convert everything to SI units for modeling
     rads_SI = rads*PC_TO_M # m
     dens_SI = dens*(M_SOL/PC_TO_M**3) # kg/m^3
     MBH_SI = M_BH*M_SOL # kg
 
+    # define the fixed inner slope flags and values
     sflag = np.ones(len(name)).astype(bool)
     s = -slope
 
+    # =============================================================================
+
+
+    # ================== ANALYTIC INPUT PARAMETER ARRAYS ==========================
+
+    model_gal_filename = './master_sample.fits'
+    gal_data = Table.read(model_gal_filename, unit_parse_strict='silent') 
+
+    select = np.ones(len(gal_data)).astype(bool)
+    name = gal_data['name'][select]
+    M_BH = gal_data['mbh'][select]*M_SOL # kg
+    slope = np.abs(gal_data['slope'][select])
+    rho_5pc = gal_data['dens_at_5pc'][select]*M_SOL/PC_TO_M**3 # kg/m^3
+
+
+    bw_cusp = np.zeros(len(gal_data)).astype(bool)
+    for i in range(len(slope)):
+        if np.abs(slope[i]) >= 2.25:
+            bw_cusp[i] = True
+        else:
+            bw_cusp[i] = False
+
+    bw_rads = np.ones(len(name))*5.53285169288588e+16 # 1.79 pc in m (median of just BW sample)
+
     decay_starts = np.ones(len(name))*50*PC_TO_M
-    decay_widths = np.ones(len(name))#*1000*PC_TO_M
-    rs = np.geomspace(1e-10,1e37,10**3)
-    for i in range(len(name)):
-        decay_widths[i] = find_decay_width(rs, slope[i], rho_5pc[i], decay_starts[i], bw_cusp[i], bw_rads[i], 0.1, galm[i]*M_SOL)
-        
-    decay_widths[np.log10(decay_widths[i]) > 22.5] = 10**22.5
+    decay_widths = np.ones(len(name))*100*PC_TO_M
 
-    
-    # Create the input fits files using the built in functions
-    create_discrete_input_table(name, rads_SI, dens_SI, MBH_SI, sflag, s, 
-                                    bw_cusp, filename=in_fn_discrete)
+    # =============================================================================
 
-    create_analytic_input_table(name, slope, rho_5pc, MBH_SI, decay_starts, decay_widths,
-                                    bw_cusp, bw_rads, filename=in_fn_analytic)
+
+    ###############################################################################
+    ###############################################################################
+    ###############################################################################
+    ###############################################################################
+    ###############################################################################
     
+    # ============== CREATE THE INPUT .FITS FILE FOR REPTIDE ======================
+
+    if not analytic:
+        in_table = create_discrete_input_table(name, rads_SI, dens_SI, MBH_SI, sflag, s, 
+                                               bw_cusp)
+    else:
+        in_table = create_analytic_input_table(name, slope, rho_5pc, MBH_SI, decay_starts, decay_widths,
+                                               bw_cusp, bw_rads)
+
+    # =============================================================================
     
-    
-    # Call REPTiDE
-    execute_rate_estimation(in_fn_analytic, out_fn)
+    main(in_table,out_fn,analytic)
 
 
 
