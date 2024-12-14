@@ -11,14 +11,14 @@ THIS IS REPTiDE...
 import numpy as np
 from scipy import integrate
 from scipy.optimize import curve_fit, fsolve
-from astropy.table import Table, vstack
+from astropy.table import Table
 from astropy.io import fits
 from tqdm import tqdm
 import time
-import multiprocessing as mp
-import reptide.istarmap as istarmap
 from mgefit.mge_fit_1d import mge_fit_1d
 import matplotlib.pyplot as plt
+
+np.seterr(invalid='ignore')
 
 # CONSTANTS
 PC_TO_M = 3.08567758128e16 
@@ -160,7 +160,7 @@ def get_rho_r(r,slope,rho_5pc,decay_start,decay_width,bw_cusp,bw_rad,smooth):
 # function to return power-law inner density profile modified for broken powerlaw test
 def line(x,a,b):
     return a*x+b
-def get_rho_r_discrete(r,dens_rad,dens,sflag,s,bw_cusp):
+def get_rho_r_discrete(r,dens_rad,dens,sflag,s,bw_cusp,bw_rad):
     
     # Interpolate the y-values for the new x-data within the original range
     y_interp = 10**safe_interp(np.log10(r),np.log10(dens_rad),np.log10(dens))
@@ -169,14 +169,23 @@ def get_rho_r_discrete(r,dens_rad,dens,sflag,s,bw_cusp):
     x_max = np.max(dens_rad)
     x_extrapolate = r[r > x_max]
     y_extrapolate = y_interp[r > x_max]
-    # [3.08567758e+21, 3.08567758e+21]
-    #y_extrapolate = y_extrapolate*np.exp(-(x_extrapolate - x_max)/(0.1*x_max))
     y_extrapolate = y_extrapolate*np.exp(-(x_extrapolate - x_max)/(1000*PC_TO_M))
+    
+    # uncomment below to extrapolate the outer power-law density slope rather than exp decay
+# =============================================================================
+#     pars1, cov1 = curve_fit(f=line, xdata=np.log10(dens_rad[-5:]), ydata=np.log10(dens[-5:]))
+#     slope1 = pars1[0] 
+#     y_extrapolate = 10**(slope1 * (np.log10(x_extrapolate) - np.log10(dens_rad[-1])) + np.log10(dens[-1]))
+# =============================================================================
+    
     y_interp[r > x_max] = y_extrapolate
+    
+    # set anything beyond 1e9 pc as zero
+    y_interp[r > 10**9*PC_TO_M] = 0
 
     # Extrapolate the y-values for new x-values less than the original x-array
     #max_ind = find_nearest(dens_rad, 10*PC_TO_M) 
-    max_ind = 10
+    max_ind = 20
     x1 = np.log10(dens_rad[0:max_ind+1])
     y1 = np.log10(dens[0:max_ind+1])
     
@@ -193,25 +202,9 @@ def get_rho_r_discrete(r,dens_rad,dens,sflag,s,bw_cusp):
     y_extrap = 10**(slope * (np.log10(x_extrap) - np.log10(dens_rad[0])) + np.log10(dens[0]))
     y_interp[r < dens_rad[0]] = y_extrap
     
-# =============================================================================
-#     if bw_cusp:
-#         bw_slope = -7/4
-#         
-#         ind0 = find_nearest(r,5.53285169e+16)
-#         x_0 = r[ind0]
-#         y_0 = y_interp[ind0]
-#         
-#         x_extrap = r[r < x_0]
-#         y_extrap = y_interp[r < x_0]
-#         
-#         y_extrap = 10**(bw_slope * (np.log10(x_extrap) - np.log10(x_0)) + np.log10(y_0))
-#         y_interp[r < x_0] = y_extrap
-# =============================================================================
-    
     return y_interp
 
 # =============================================================================
-
 
 
 # =============================================================================
@@ -226,14 +219,14 @@ def get_enc_mass(r,slope,rho_5pc,max_ind,decay_start,decay_width,bw_cusp,bw_rad,
 # =============================================================================
 
 # =============================================================================
-def get_encm_pot_integrand_discrete(r,dens_rad,dens,sflag,s,bw_cusp):
-    return r**2*get_rho_r_discrete(r,dens_rad,dens,sflag,s,bw_cusp)    
+def get_encm_pot_integrand_discrete(r,dens_rad,dens,sflag,s,bw_cusp,bw_rad):
+    return r**2*get_rho_r_discrete(r,dens_rad,dens,sflag,s,bw_cusp,bw_rad)    
 # function to compute the mass enclosed from density profile 
-def get_enc_mass_discrete(r,dens_rad,dens,max_ind,sflag,s,bw_cusp):
+def get_enc_mass_discrete(r,dens_rad,dens,max_ind,sflag,s,bw_cusp,bw_rad):
     if max_ind == 0:
         return 0
     else:
-        return 4*np.pi*integrate.trapezoid(get_encm_pot_integrand_discrete(r[0:max_ind+1],dens_rad,dens,sflag,s,bw_cusp), r[0:max_ind+1])
+        return 4*np.pi*integrate.trapezoid(get_encm_pot_integrand_discrete(r[0:max_ind+1],dens_rad,dens,sflag,s,bw_cusp,bw_rad), r[0:max_ind+1])
 # =============================================================================
 
 
@@ -249,12 +242,12 @@ def get_ext_potential(r,slope,rho_5pc,min_ind,decay_start,decay_width,bw_cusp,bw
 # =============================================================================
 
 # =============================================================================
-def get_ext_pot_integrand_discrete(r,dens_rad,dens,min_ind,sflag,s,bw_cusp):
-    return r*get_rho_r_discrete(r,dens_rad,dens,sflag,s,bw_cusp)   
+def get_ext_pot_integrand_discrete(r,dens_rad,dens,min_ind,sflag,s,bw_cusp,bw_rad):
+    return r*get_rho_r_discrete(r,dens_rad,dens,sflag,s,bw_cusp,bw_rad)   
 # function to compute the contribution to the potential of the galaxy at 
 # larger radii
-def get_ext_potential_discrete(r,dens_rad,dens,min_ind,sflag,s,bw_cusp):
-    return 4*np.pi*G*integrate.trapezoid(get_ext_pot_integrand_discrete(r[min_ind:],dens_rad,dens,min_ind,sflag,s,bw_cusp),r[min_ind:])
+def get_ext_potential_discrete(r,dens_rad,dens,min_ind,sflag,s,bw_cusp,bw_rad):
+    return 4*np.pi*G*integrate.trapezoid(get_ext_pot_integrand_discrete(r[min_ind:],dens_rad,dens,min_ind,sflag,s,bw_cusp,bw_rad),r[min_ind:])
 # =============================================================================
 
 
@@ -266,7 +259,6 @@ def get_psi_r(r,M_BH,slope,rho_5pc,decay_start,decay_width,bw_cusp,bw_rad,smooth
     
     psi_1 = G*M_BH/r
     
-
     M_enc = np.zeros_like(r)
     for i in range(len(M_enc)):
         M_enc[i] = get_enc_mass(r,slope,rho_5pc,i,decay_start,decay_width,bw_cusp,bw_rad,smooth)
@@ -287,18 +279,18 @@ def get_psi_r(r,M_BH,slope,rho_5pc,decay_start,decay_width,bw_cusp,bw_rad,smooth
 
 # =============================================================================
 # derive the total gravitational potential (psi(r)) as a function of r
-def get_psi_r_discrete(r,M_BH,dens_rad,dens,sflag,s,bw_cusp):
+def get_psi_r_discrete(r,M_BH,dens_rad,dens,sflag,s,bw_cusp,bw_rad):
     
     psi_1 = G*M_BH/r
     
     M_enc = np.zeros_like(r)
     for i in range(len(M_enc)):
-        M_enc[i] = get_enc_mass_discrete(r,dens_rad,dens,i,sflag,s,bw_cusp)
+        M_enc[i] = get_enc_mass_discrete(r,dens_rad,dens,i,sflag,s,bw_cusp,bw_rad)
     psi_2 = G*M_enc/r
 
     psi_3 = np.zeros_like(r)
     for i in range(len(psi_3)):
-        psi_3[i] = get_ext_potential_discrete(r,dens_rad,dens,i,sflag,s,bw_cusp)
+        psi_3[i] = get_ext_potential_discrete(r,dens_rad,dens,i,sflag,s,bw_cusp,bw_rad)
     
     return psi_1+psi_2+psi_3,psi_1,psi_2,psi_3,M_enc
 # =============================================================================
@@ -322,13 +314,19 @@ def find_nearest(array, value):
 # =============================================================================  
 def get_avg_M_sq(masses):
     PDMF = get_PDMF(masses)
-    return integrate.trapz((PDMF/M_SOL)*masses**2, masses)
+    return integrate.trapezoid((PDMF/M_SOL)*(masses)**2, masses)
 # =============================================================================  
 
 # =============================================================================
 def get_avg_M(masses):
     PDMF = get_PDMF(masses)
     return integrate.trapezoid(masses*(PDMF/M_SOL),masses)
+# =============================================================================
+
+# =============================================================================
+def get_M_0(masses):
+    PDMF = get_PDMF(masses)
+    return integrate.trapezoid((PDMF/M_SOL),masses)
 # =============================================================================
 
 
@@ -338,7 +336,7 @@ def get_PDMF(masses):
     solar_masses = masses/M_SOL
     PDMF = np.zeros_like(masses)
     for i in range(len(masses)):
-        if masses[i] < 0.5:
+        if solar_masses[i] < 0.5:
             PDMF[i] = (1/1.61)*(solar_masses[i]/0.5)**(-1.3)
             #PDMF[i] = 0.98*solar_masses[i]**(-1.3)
         else:
@@ -365,7 +363,7 @@ def get_psi_t(e,t):
 
 # =============================================================================
 
-def get_psi_r_prime(r_prime,r_apo,M_BH,dens_rad,dens,sflag,s,bw_cusp):
+def get_psi_r_prime(r_prime,r_apo,M_BH,dens_rad,dens,sflag,s,bw_cusp,bw_rad):
     
     r = r_apo/2*(r_prime+1)
     
@@ -375,14 +373,14 @@ def get_psi_r_prime(r_prime,r_apo,M_BH,dens_rad,dens,sflag,s,bw_cusp):
     
     M_enc = np.zeros_like(r)
     for i in range(len(M_enc)):
-        M_enc[i] = get_enc_mass_discrete(r,dens_rad,dens,i,sflag,s,bw_cusp)
+        M_enc[i] = get_enc_mass_discrete(r,dens_rad,dens,i,sflag,s,bw_cusp,bw_rad)
     psi_2 = G*M_enc/r
     psi_2[np.isnan(psi_2)] = 0
     
 
     psi_3 = np.zeros_like(r)
     for i in range(len(psi_3)):
-        psi_3[i] = get_ext_potential_discrete(r,dens_rad,dens,i,sflag,s,bw_cusp)
+        psi_3[i] = get_ext_potential_discrete(r,dens_rad,dens,i,sflag,s,bw_cusp,bw_rad)
         
     psi_3[np.isnan(psi_3)] = 0
     
@@ -465,6 +463,7 @@ def integrand_mu(rs_mu,r,psi_r,e_DF_i,e_DF,DF,I_0,M_BH,avg_M_sq,J_c_e):
     lim_thing_r = (32*np.pi**2*rs_mu**2*G**2*avg_M_sq*np.log(0.4*M_BH/M_SOL))/(3*J_c_e**2)* \
                     (3*I_12_r - I_32_r + 2*I_0)
 
+
     out = lim_thing_r/np.sqrt(2*(psi_rs_mu-e_DF_i))
     if len(out) == 1:
         if np.isnan(out): out == 0
@@ -473,6 +472,34 @@ def integrand_mu(rs_mu,r,psi_r,e_DF_i,e_DF,DF,I_0,M_BH,avg_M_sq,J_c_e):
     
     return out
 # =============================================================================
+
+
+# =============================================================================
+def integrand_mu_temp(r,psi_r,e_DF_i,e_DF,DF,I_0,M_BH,avg_M_sq,J_c_e):
+    
+    rs_mu_len = len(r)
+    psi_rs_mu = psi_r
+
+    I_12_r = np.zeros(rs_mu_len)
+    I_32_r = np.zeros(rs_mu_len)
+    
+    for j in range(rs_mu_len):
+        psi_i = psi_rs_mu[j]
+        es_i = np.linspace(e_DF_i,psi_i,10**3)
+        DF_interp_i = 10**safe_interp(np.log10(es_i),np.log10(e_DF),np.log10(DF))
+        
+        
+        I_12_r[j] = (2*(psi_i-e_DF_i))**(-1/2)*integrate.trapezoid((2*(psi_i-es_i))**(1/2)*DF_interp_i,es_i)
+        I_32_r[j] = (2*(psi_i-e_DF_i))**(-3/2)*integrate.trapezoid((2*(psi_i-es_i))**(3/2)*DF_interp_i,es_i)
+        if np.isnan(I_12_r[j]): I_12_r[j] = 0
+        if np.isnan(I_32_r[j]): I_32_r[j] = 0
+    
+    lim_thing_r = (32*np.pi**2*r**2*G**2*avg_M_sq*np.log(0.4*M_BH/M_SOL))/(3*J_c_e**2)* \
+                    (3*I_12_r - I_32_r + 2*I_0)
+    
+    return lim_thing_r
+# =============================================================================
+
 
 # =============================================================================
 # 
@@ -546,8 +573,8 @@ def read_dat_file(filename):
 # =============================================================================
 # Function to create the input fits file for an analytic run
 
-def create_analytic_input_table(names, slopes, rho_5pc, M_BHs, decay_start, decay_width, bw_cusps, bw_rads,
-                      no_print=np.array([True]), M_min=np.array([0.08]), M_max=np.array([1]), smooth=np.array([0.1])):
+def create_analytic_input_table(names, slopes, rho_5pc, M_BHs, decay_start, decay_width, bw_cusp=False, bw_rad=1e-300,
+                      quiet=True, M_min=0.08, M_max=1, smooth=0.1):
     """
     Create a FITS table with specified columns and values.
 
@@ -559,7 +586,7 @@ def create_analytic_input_table(names, slopes, rho_5pc, M_BHs, decay_start, deca
     decay_params (array-like): Array of float tuples (radius, width) of exponential decay (m).
     bw_cusp (array-like): Array of booleans, indicate BW cusp needed.
     bw_rad (array-like): Array of float, radius at which BW cusp will begin (-7/4 power-law).
-    no_print (boolean): Only want this false for a single run.
+    quiet (boolean): Only want this false for a single run.
     M_min (float, optional): Minimum mass for the PDMF. Default is 0.08.
     M_max (float, optional): Maximum mass for the PDMF. Default is 1.
     smooth (float, optional): Smoothness of exponential decay transition. Default is 0.1.
@@ -568,36 +595,33 @@ def create_analytic_input_table(names, slopes, rho_5pc, M_BHs, decay_start, deca
     Returns:
     None
     """
-    # Define the columns for the FITS table
-    col1 = fits.Column(name='name', format='20A', array=names)
-    col2 = fits.Column(name='slope', format='D', array=slopes)
-    col3 = fits.Column(name='rho_5pc', format='D', array=rho_5pc)
-    col4 = fits.Column(name='M_BH', format='D', array=M_BHs)        
-    col5 = fits.Column(name='decay_start', format='D', array=decay_start)
-    col6 = fits.Column(name='decay_width', format='D', array=decay_width)
-    col7 = fits.Column(name='bw_cusp', format='L', array=bw_cusps)
-    col8 = fits.Column(name='bw_rad', format='D', array=bw_rads)
     
-# =============================================================================
-#     if no_print.size == 1 and isinstance(names, np.ndarray):
-#         col9 = fits.Column(name='no_print', format='L', array=np.ones_like(names).astype(bool) * no_print)
-#     else:
-#         col9 = fits.Column(name='no_print', format='L', array=no_print)
-#     if M_min.size == 1 and isinstance(names, np.ndarray):
-#         col10 = fits.Column(name='M_min', format='D', array=np.ones_like(names).astype(float) * M_min)
-#     else:
-#         col10 = fits.Column(name='M_min', format='D', array=M_min)
-#     if M_max.size == 1 and isinstance(names, np.ndarray):
-#         col11 = fits.Column(name='M_max', format='D', array=np.ones_like(names).astype(float) * M_max)
-#     else:
-#         col11 = fits.Column(name='M_max', format='D', array=M_max)
-#     if smooth.size == 1 and isinstance(names, np.ndarray):
-#         col12 = fits.Column(name='smooth', format='D', array=np.ones_like(names).astype(float) * smooth)
-#     else:
-#         col12 = fits.Column(name='smooth', format='D', array=smooth)
-# =============================================================================
-
-    col9 = fits.Column(name='no_print', format='L', array=np.ones_like(names).astype(bool) * no_print)
+    if not isinstance(names, np.ndarray): names = np.array([names])
+    if not isinstance(slopes, np.ndarray): slopes = np.array([slopes])
+    if not isinstance(rho_5pc, np.ndarray): rho_5pc = np.array([rho_5pc])
+    if not isinstance(M_BHs, np.ndarray): M_BHs = np.array([M_BHs])
+    if not isinstance(decay_start, np.ndarray): decay_start = np.array([decay_start])
+    if not isinstance(decay_width, np.ndarray): decay_width = np.array([decay_width])
+    if not isinstance(quiet, np.ndarray): quiet = np.array([quiet])
+    if not isinstance(M_min, np.ndarray): M_min = np.array([M_min])
+    if not isinstance(M_max, np.ndarray): M_max = np.array([M_max])
+    if not isinstance(smooth, np.ndarray): smooth = np.array([smooth])
+    
+    
+    # Define the columns for the FITS table
+    col1 = fits.Column(name='name', format='20A', array=np.array(names))
+    col2 = fits.Column(name='slope', format='D', array=np.array(slopes))
+    col3 = fits.Column(name='rho_5pc', format='D', array=np.array(rho_5pc))
+    col4 = fits.Column(name='M_BH', format='D', array=np.array(M_BHs))        
+    col5 = fits.Column(name='decay_start', format='D', array=np.array(decay_start))
+    col6 = fits.Column(name='decay_width', format='D', array=np.array(decay_width)) 
+    if isinstance(bw_cusp, bool):
+        col7 = fits.Column(name='bw_cusp', format='L', array=np.ones_like(names).astype(bool)*bw_cusp)
+        col8 = fits.Column(name='bw_rad', format='D', array=np.ones_like(names).astype(float)*bw_rad)
+    else:
+        col7 = fits.Column(name='bw_cusp', format='L', array=np.array(bw_cusp))
+        col8 = fits.Column(name='bw_rad', format='D', array=np.array(bw_rad))
+    col9 = fits.Column(name='quiet', format='L', array=np.ones_like(names).astype(bool) * quiet)
     col10 = fits.Column(name='M_min', format='D', array=np.ones_like(names).astype(float) * M_min)
     col11 = fits.Column(name='M_max', format='D', array=np.ones_like(names).astype(float) * M_max)
     col12 = fits.Column(name='smooth', format='D', array=np.ones_like(names).astype(float) * smooth)
@@ -617,9 +641,8 @@ def create_analytic_input_table(names, slopes, rho_5pc, M_BHs, decay_start, deca
 # =============================================================================
 # Function to create the input fits file for an discrete run
 
-def create_discrete_input_table(names, rads, dens, M_BH, sflag, s, bw_cusp, 
-                                no_print=np.array([True]), M_min=np.array([0.08]), 
-                                M_max=np.array([1])):
+def create_discrete_input_table(names, rads, dens, M_BH, sflag, s, bw_cusp=False, bw_rad=1e-300, 
+                                quiet=True, M_min=0.08, M_max=1):
     """)
     Create a FITS table with specified columns and values.
 
@@ -631,7 +654,8 @@ def create_discrete_input_table(names, rads, dens, M_BH, sflag, s, bw_cusp,
     sflag (array-like): Array of booleans, indicate fixed inner slope.
     s (array-like): Array of float, fixed slope values.
     bw_cusp (array-like): Array of booleans, indicate inner slope to BW cusp (-7/4).
-    no_print (boolean): Only want this false for a single run.
+    bw_rad (array-like): Array of float, radius at which BW cusp will begin (-7/4 power-law).
+    quiet (boolean): Only want this false for a single run.
     M_min (float, optional): Minimum mass for the PDMF. Default is 0.08.
     M_max (float, optional): Maximum mass for the PDMF. Default is 1.
     filename (str): Name of the output FITS file.
@@ -639,41 +663,42 @@ def create_discrete_input_table(names, rads, dens, M_BH, sflag, s, bw_cusp,
     Returns:
     None
     """
+
+    if not isinstance(names, np.ndarray): names = np.array([names])
+    if len(rads.shape) == 1: rads = np.array([rads])
+    if len(dens.shape) == 1: dens = np.array([[dens]])
+    if not isinstance(M_BH, np.ndarray): M_BH = np.array([M_BH])
+    if not isinstance(sflag, np.ndarray): sflag = np.array([sflag])
+    if not isinstance(s, np.ndarray): s = np.array([s])
+    if not isinstance(bw_cusp, np.ndarray): bw_cusp = np.array([bw_cusp])
+    if not isinstance(bw_rad, np.ndarray): bw_rad = np.array([bw_rad])
+    if not isinstance(quiet, np.ndarray): quiet = np.array([quiet])
+    if not isinstance(M_min, np.ndarray): M_min = np.array([M_min])
+    if not isinstance(M_max, np.ndarray): M_max = np.array([M_max])
+    
     # Define the columns for the FITS table
     col1 = fits.Column(name='name', format='20A', array=np.array(names))
     col2 = fits.Column(name='M_BH', format='D', array=np.array(M_BH))
     col3 = fits.Column(name='sflag', format='L', array=np.array(sflag))
     col4 = fits.Column(name='s', format='D', array=np.array(s))
-    col5 = fits.Column(name='bw_cusp', format='D', array=np.array(bw_cusp))
-    
-# =============================================================================
-#     if no_print.size == 1 and isinstance(names, np.ndarray):
-#         col6 = fits.Column(name='no_print', format='L', array=np.ones_like(names).astype(bool) * no_print)
-#     else:
-#         col6 = fits.Column(name='no_print', format='L', array=np.array(no_print))
-#     if M_min.size == 1 and isinstance(names, np.ndarray):
-#         col7 = fits.Column(name='M_min', format='D', array=np.ones_like(names).astype(float) * M_min)
-#     else:
-#         col7 = fits.Column(name='M_min', format='D', array=np.array(M_min))
-#     if M_max.size == 1 and isinstance(names, np.ndarray):
-#         col8 = fits.Column(name='M_max', format='D', array=np.ones_like(names).astype(float) * M_max)
-#     else:
-#         col8 = fits.Column(name='M_max', format='D', array=np.array(M_max))
-# =============================================================================
-    col6 = fits.Column(name='no_print', format='L', array=np.ones_like(names).astype(bool) * no_print)
-    col7 = fits.Column(name='M_min', format='D', array=np.ones_like(names).astype(float) * M_min)
-    col8 = fits.Column(name='M_max', format='D', array=np.ones_like(names).astype(float) * M_max)
+    if isinstance(bw_cusp, bool):
+        col5 = fits.Column(name='bw_cusp', format='L', array=np.ones_like(names).astype(bool)*bw_cusp)
+        col6 = fits.Column(name='bw_rad', format='D', array=np.ones_like(names).astype(float)*bw_rad)
+    else:
+        col5 = fits.Column(name='bw_cusp', format='L', array=np.array(bw_cusp))
+        col6 = fits.Column(name='bw_rad', format='D', array=np.array(bw_rad))
+    col7 = fits.Column(name='quiet', format='L', array=np.ones_like(names).astype(bool) * quiet)
+    col8 = fits.Column(name='M_min', format='D', array=np.ones_like(names).astype(float) * M_min)
+    col9 = fits.Column(name='M_max', format='D', array=np.ones_like(names).astype(float) * M_max)
     
     # Convert rads and dens to variable-length arrays
     rads_vla = fits.Column(name='rads', format='PE()', array=np.array(rads,dtype=float))
     dens_vla = fits.Column(name='dens', format='PE()', array=np.array(dens,dtype=float))
+    
     # Create the FITS table with the defined columns
-    cols = fits.ColDefs([col1, rads_vla, dens_vla, col2, col3, col4, col5, col6, col7, col8])
+    cols = fits.ColDefs([col1, rads_vla, dens_vla, col2, col3, col4, col5, col6, col7, col8, col9])
     hdu = fits.BinTableHDU.from_columns(cols)
 
-    # Write the FITS table to a file
-    #hdu.writeto(filename, overwrite=True)
-    
     return Table.read(hdu)
 
 # =============================================================================
@@ -905,7 +930,7 @@ def plot_LC_flux_solar_of_rapo(output_table, xlims=(7,16), ylims=(-50,-20)):
 ###############################################################################
 
 def get_TDE_rate_analytic(name,slope,rho_5pc,M_BH,decay_start,decay_width,bw_cusp,bw_rad,
-                 no_print=True,M_min=0.08,M_max=1,smooth=0.1):
+                 quiet=True,M_min=0.08,M_max=1,smooth=0.1,n_energies=300):
 
     dis = True
 # =========================== DF Computation ==================================
@@ -916,15 +941,15 @@ def get_TDE_rate_analytic(name,slope,rho_5pc,M_BH,decay_start,decay_width,bw_cus
 # =============================================================================
     # use the potential at the tidal radius and 1,000,000 pc to set the orbital energy bounds
     r_t = R_SOL*(M_BH/M_SOL)**(1/3)
-    radys = np.geomspace(10**-10,10**6,10**4)*PC_TO_M
+    radys = np.geomspace(r_t/PC_TO_M,10**6,10**4)*PC_TO_M
     psis = get_psi_r(radys,M_BH,slope,rho_5pc,decay_start,decay_width,bw_cusp,bw_rad,smooth)[0]
-    r_for_e_max = r_t
+    r_for_e_max = 100*r_t
     ind_for_e_max = find_nearest(radys, r_for_e_max)
     e_max = psis[ind_for_e_max]
     e_min = psis[-1]
     
     # specify the range of specific orbital energies to consider
-    e = np.geomspace(e_min,e_max,10**2)
+    e = np.geomspace(e_min,e_max,n_energies)
     
     # STEP 1: Define wide range of t
     t_bound = 1.5
@@ -940,7 +965,7 @@ def get_TDE_rate_analytic(name,slope,rho_5pc,M_BH,decay_start,decay_width,bw_cus
     
     psi_r_init,psi_bh_init,psi_enc_init,psi_ext_init,enc_masses = get_psi_r(r_ls,M_BH,slope,rho_5pc,decay_start,decay_width,bw_cusp,bw_rad,smooth)
 
-    if not no_print:
+    if not quiet:
         dis = False
         print('Computing DF...')
         print()
@@ -970,7 +995,7 @@ def get_TDE_rate_analytic(name,slope,rho_5pc,M_BH,decay_start,decay_width,bw_cus
                         r = np.arange(0,num_r,1)*spacing+(r_closest-0.2*r_closest)
                         psi_r = 10**safe_interp(np.log10(r),np.log10(r_ls),np.log10(psi_r_init))
                         
-                        rho_r = get_rho_r(r,slope,rho_5pc,decay_start,decay_width,bw_cusp,bw_rad,bw_rad)
+                        rho_r = get_rho_r(r,slope,rho_5pc,decay_start,decay_width,bw_cusp,bw_rad,smooth)
                     
                         rho_r[np.where(rho_r == 0.0)] = 1e-323
                     
@@ -998,7 +1023,7 @@ def get_TDE_rate_analytic(name,slope,rho_5pc,M_BH,decay_start,decay_width,bw_cus
             integrands = d_rho_d_t * frac_fac_t
     
             # STEP 7: Evaluate the integral for all values of epsilon (e)
-            integrals[j] = integrate.trapz(integrands,t)
+            integrals[j] = integrate.trapezoid(integrands,t)
             
         return integrals
       
@@ -1017,7 +1042,7 @@ def get_TDE_rate_analytic(name,slope,rho_5pc,M_BH,decay_start,decay_width,bw_cus
     DF = np.abs(1/(np.sqrt(8)*np.pi**2*M_SOL)*d_int_d_e)
     orb_ens = e[1:-1]
     
-    if not no_print:
+    if not quiet:
         print('DF computation complete.')
         print()
 
@@ -1046,7 +1071,7 @@ def get_TDE_rate_analytic(name,slope,rho_5pc,M_BH,decay_start,decay_width,bw_cus
     
     avg_M_sq = M_SOL**2
     
-    if not no_print:
+    if not quiet:
         print('Computing q...')
         print()
     time.sleep(1)
@@ -1056,8 +1081,8 @@ def get_TDE_rate_analytic(name,slope,rho_5pc,M_BH,decay_start,decay_width,bw_cus
         for i in tqdm(range(len(orb_ens)), position=0, leave=True, disable=dis):   
             eps_apo = psi_r_ref
             eps = (psi_bh_ref+psi_enc_ref)/2 + psi_ext_ref
-            J_c_r = np.sqrt(G*enc_masses*r_ref)
-            R_LC_r = (2*M_BH*r_t)/(enc_masses*r_ref)
+            J_c_r = np.sqrt(G*(enc_masses+M_BH)*r_ref)
+            R_LC_r = (2*M_BH*r_t)/((enc_masses+M_BH)*r_ref)
             
             if orb_ens[i] > eps[0]:
                 periods_e[i] = 0
@@ -1081,7 +1106,7 @@ def get_TDE_rate_analytic(name,slope,rho_5pc,M_BH,decay_start,decay_width,bw_cus
                     new_eps = 10**safe_interp(np.log10(new_r_ref_LC),np.log10(r_ref),np.log10(eps))
                     new_J_c_r = 10**safe_interp(np.log10(new_r_ref_LC),np.log10(r_ref),np.log10(J_c_r))
                     new_r_ind_LC = find_nearest(new_eps,orb_ens[i])
-                    if np.abs(new_eps[new_r_ind_LC] - orb_ens[i])/orb_ens[i] >= 0.001:
+                    if np.abs(new_eps[new_r_ind_LC]- orb_ens[i])/orb_ens[i] >= 0.001:
                         raise ValueError('Error in R_LC calculations: R_LC energy value is greater than energy array value by > 0.1%. Finer sampling needed; Adjust r_ref at line 1111. ***')
                     new_R_LC_r = 10**safe_interp(np.log10(new_r_ref_LC),np.log10(r_ref),np.log10(R_LC_r))
                     R_LC_e[i] = new_R_LC_r[new_r_ind_LC]
@@ -1089,13 +1114,37 @@ def get_TDE_rate_analytic(name,slope,rho_5pc,M_BH,decay_start,decay_width,bw_cus
                 else:
                     R_LC_e[i] = R_LC_r[r_ind_LC]
                     J_c_e[i] = J_c_r[r_ind_LC]
-    
-            periods_e[i] = 2*integrate.quadrature(integrand_p,0,r_apo,args=(r_ref,psi_r_ref,orb_ens[i]),
-                                                  maxiter=400,rtol=1)[0]
+            
+            r2 = np.linspace(1e-10,r_apo,10**5)
+            psi2 = 10**np.interp(np.log10(r2),np.log10(r_ref),np.log10(eps_apo))
+            
+            r2_prime = 2*r2/r_apo - 1
+            psi2_prime = psi2 
+            
+            t_of_r2_prime_temp = np.arcsinh((2*np.arctanh(r2_prime))/(np.pi))
+            psi2_t_temp = psi2_prime
+            
+            sort_t2 = np.argsort(t_of_r2_prime_temp)
+            t_of_r2_prime = t_of_r2_prime_temp[sort_t2]
+            psi2_t = psi2_t_temp[sort_t2]
+            
+            t_of_r2_prime[t_of_r2_prime == -1*np.inf] = -3
+            t_of_r2_prime[t_of_r2_prime == np.inf] = 3
+            
+            prefacs2 = np.sqrt(4*np.arctanh(np.tanh(np.pi/2*np.sinh(t_of_r2_prime)))**2 + np.pi**2)/(2*np.cosh(np.pi/2*np.sinh(t_of_r2_prime))**2)
+            integrands2 = prefacs2/(np.sqrt(2*(psi2_t-orb_ens[i])))
+            integrands2[np.isnan(integrands2)] = 0
+            integrands2[np.isinf(integrands2)] = 0
+            
+            final_t2 = np.linspace(t_of_r2_prime[0],t_of_r2_prime[-1],10**3)
+            
+            final_integrand2 = np.interp(final_t2,t_of_r2_prime,integrands2)
+            
+            periods_e[i] = r_apo*integrate.trapezoid(final_integrand2,final_t2)
     
             es = np.geomspace(orb_ens[0],orb_ens[i],10**3)
             DF_interp = 10**safe_interp(np.log10(es),np.log10(orb_ens),np.log10(DF))
-            I_0 = integrate.trapz(DF_interp,es)
+            I_0 = integrate.trapezoid(DF_interp,es)
     
             int_fac_r = integrate.quadrature(integrand_mu,r_t,r_apo,args=(r_ref,psi_r_ref,orb_ens[i],orb_ens,DF,I_0,M_BH,avg_M_sq,J_c_e[i]),
                                        rtol=1,maxiter=400)[0]
@@ -1109,7 +1158,7 @@ def get_TDE_rate_analytic(name,slope,rho_5pc,M_BH,decay_start,decay_width,bw_cus
     
         q_discrete = mu_e*periods_e/R_LC_e
     
-        if not no_print:    
+        if not quiet:    
             print('q computation complete.')
             print()
             
@@ -1170,9 +1219,9 @@ def get_TDE_rate_analytic(name,slope,rho_5pc,M_BH,decay_start,decay_width,bw_cus
     # compute the TDE rates for a pure population of solar mass stars 
     LC_flux_solar = get_LC_flux(orb_ens,G,M_BH,DF,mu_e,q,R_LC_e,periods_e,J_c_e)
     
-    LC_flux_solar[LC_flux_solar < 0] = 0.0
+    #LC_flux_solar[LC_flux_solar < 0] = 0.0
     
-    TDE_rate_solar = integrate.trapz(LC_flux_solar, orb_ens)*SEC_PER_YR
+    TDE_rate_solar = integrate.trapezoid(LC_flux_solar, orb_ens)*SEC_PER_YR
     
     
     #%%
@@ -1183,7 +1232,7 @@ def get_TDE_rate_analytic(name,slope,rho_5pc,M_BH,decay_start,decay_width,bw_cus
     LC_contributions = np.zeros(len(masses))
     LC_flux_per_mass = []
     
-    if not no_print:
+    if not quiet:
         print('Computing LC Flux per mass in PDMF:')
         print()
     time.sleep(1)
@@ -1191,29 +1240,14 @@ def get_TDE_rate_analytic(name,slope,rho_5pc,M_BH,decay_start,decay_width,bw_cus
     for j in range(len(masses)):
         r_t_adj = R_stars[j]*(M_BH/masses[j])**(1/3)
         R_LC_e_adj = np.zeros(len(orb_ens))
-        periods_e_adj = np.zeros(len(orb_ens))
         
         for i in range(len(orb_ens)):
-            eps_apo = psi_r_ref
             eps = (psi_bh_ref+psi_enc_ref)/2 + psi_ext_ref
-            R_LC_r = (2*M_BH*r_t_adj)/(enc_masses*r_ref)
+            R_LC_r = (2*M_BH*r_t_adj)/((enc_masses+M_BH)*r_ref)
         
             if orb_ens[i] > eps[0]:
                 R_LC_e_adj[i] = 1
             else:   
-                r_ind = find_nearest(eps_apo,orb_ens[i])
-                if np.abs(eps_apo[r_ind] - orb_ens[i])/orb_ens[i] >= 0.001:
-                    new_r_ref = np.geomspace(r_ref[r_ind]-0.2*r_ref[r_ind],r_ref[r_ind]+0.2*r_ref[r_ind],10**3)
-                    new_eps_apo = 10**safe_interp(np.log10(new_r_ref),np.log10(r_ref),np.log10(eps_apo))
-                    new_r_ind = find_nearest(new_eps_apo,orb_ens[i])
-                    if np.abs(new_eps_apo[new_r_ind] - orb_ens[i])/orb_ens[i] >= 0.001:
-                        print('Possible Error: R_apo calculations.')
-                        print(np.abs(new_eps_apo[new_r_ind] - orb_ens[i])/orb_ens[i])
-                        pdb.set_trace()
-                    r_apo = new_r_ref[new_r_ind]
-                else:
-                    r_apo = r_ref[r_ind]
-                
                 r_ind_LC = find_nearest(eps,orb_ens[i])
                 if np.abs(eps[r_ind_LC] - orb_ens[i])/orb_ens[i] >= 0.001:
                     new_r_ref_LC = np.geomspace(r_ref[r_ind_LC]-0.2*r_ref[r_ind_LC],r_ref[r_ind_LC]+0.2*r_ref[r_ind_LC],10**3)
@@ -1228,27 +1262,28 @@ def get_TDE_rate_analytic(name,slope,rho_5pc,M_BH,decay_start,decay_width,bw_cus
                 else:
                     R_LC_e_adj[i] = R_LC_r[r_ind_LC]
                 
-                periods_e_adj[i] = 2*integrate.quadrature(integrand_p,0,r_apo,args=(r_ref,psi_r_ref,orb_ens[i]),
-                                                      maxiter=400,rtol=1)[0]
-           
+       
+        DF_adj = DF * (M_SOL/get_avg_M(masses))
+        mu_e_adj = mu_e * (get_avg_M_sq(masses)/M_SOL**2) * (M_SOL/get_avg_M(masses))
+        q_adj = mu_e_adj*periods_e/R_LC_e_adj
         
-        q_adj = mu_e*periods_e/R_LC_e_adj
-        LC_flux_e = get_LC_flux(orb_ens,G,M_BH,DF,mu_e,q_adj,R_LC_e_adj,periods_e_adj,J_c_e)
+        LC_flux_e = get_LC_flux(orb_ens,G,M_BH,DF_adj,mu_e_adj,q_adj,R_LC_e_adj,periods_e,J_c_e)
+        #LC_flux_e[LC_flux_e < 0] = 0.0
         LC_flux_per_mass.append(LC_flux_e)
-        LC_contributions[j] = integrate.trapz(LC_flux_e, orb_ens)
+        LC_contributions[j] = integrate.trapezoid(LC_flux_e, orb_ens)
         
         
-    if not no_print:
+    if not quiet:
         print('LC Flux per Mass computation complete.')
         print()
 
     LC_flux_per_mass = np.array(LC_flux_per_mass)
 
     PDMF = get_PDMF(masses)
-    TDE_rate_full = integrate.trapz(LC_contributions*PDMF, masses/M_SOL)*SEC_PER_YR
-    TDE_rate_full = 0
+    TDE_rate_full = integrate.trapezoid(LC_contributions*PDMF, masses/M_SOL)*SEC_PER_YR
 
-    all_output = {'slope': [slope],
+    all_output = {'name': [name],
+                  'slope': [slope],
                   'rho_5pc': [rho_5pc],
                   'smooth': [smooth],
                   'M_BH': [M_BH],
@@ -1295,8 +1330,8 @@ def get_TDE_rate_analytic(name,slope,rho_5pc,M_BH,decay_start,decay_width,bw_cus
 
 
 
-def get_TDE_rate_discrete(name,dens_rad,dens,M_BH,sflag,s,bw_cusp,
-                 no_print=True,M_min=0.08,M_max=1):
+def get_TDE_rate_discrete(name,dens_rad,dens,M_BH,sflag,s,bw_cusp,bw_rad,
+                 quiet=True,M_min=0.08,M_max=1,n_energies=300):
 
     dis = True
 # =========================== DF Computation ==================================
@@ -1308,14 +1343,14 @@ def get_TDE_rate_discrete(name,dens_rad,dens,M_BH,sflag,s,bw_cusp,
     # use the potential at 0.1 of the tidal radius and 1,000,000 pc to set the orbital energy bounds
     r_t = R_SOL*(M_BH/M_SOL)**(1/3)
     radys = np.geomspace(10**-10,10**6,10**4)*PC_TO_M
-    psis = get_psi_r_discrete(radys,M_BH,dens_rad,dens,sflag,s,bw_cusp)[0]
-    r_for_e_max = r_t
+    psis = get_psi_r_discrete(radys,M_BH,dens_rad,dens,sflag,s,bw_cusp,bw_rad)[0]
+    r_for_e_max = 100*r_t
     ind_for_e_max = find_nearest(radys, r_for_e_max)
     e_max = psis[ind_for_e_max]
     e_min = psis[-1]
     
     # specify the range of specific orbital energies to consider
-    e = np.geomspace(e_min,e_max,10**2)
+    e = np.geomspace(e_min,e_max,n_energies)
 
     # STEP 1: Define wide range of t
     t_bound = 1.5
@@ -1325,14 +1360,14 @@ def get_TDE_rate_discrete(name,dens_rad,dens,M_BH,sflag,s,bw_cusp,
     integrals = np.zeros_like(e)
 
     r_min = 1000 # meters
-    r_max = 10**10*PC_TO_M # meters
+    r_max = 10**12*PC_TO_M # meters
     num_rad = 10**4
     r_ls = np.geomspace(r_min,r_max,num_rad)
 
-    psi_r_init,psi_bh_init,psi_enc_init,psi_ext_init,enc_masses = get_psi_r_discrete(r_ls,M_BH,dens_rad,dens,sflag,s,bw_cusp)
-    rho_r_init = get_rho_r_discrete(r_ls,dens_rad,dens,sflag,s,bw_cusp)
+    psi_r_init,psi_bh_init,psi_enc_init,psi_ext_init,enc_masses = get_psi_r_discrete(r_ls,M_BH,dens_rad,dens,sflag,s,bw_cusp,bw_rad)
+    rho_r_init = get_rho_r_discrete(r_ls,dens_rad,dens,sflag,s,bw_cusp,bw_rad)
 
-    if not no_print:
+    if not quiet:
         dis = False
         print('Computing DF...')
         print()
@@ -1362,7 +1397,7 @@ def get_TDE_rate_discrete(name,dens_rad,dens,M_BH,sflag,s,bw_cusp,
                         r = np.arange(0,num_r,1)*spacing+(r_closest-0.2*r_closest)
                         #psi_r = get_psi_r(r,G,M_BH,slope,rho_b,r_b,decay_start,decay_width)
                         psi_r = 10**safe_interp(np.log10(r),np.log10(r_ls),np.log10(psi_r_init))
-                        rho_r = get_rho_r_discrete(r,dens_rad,dens,sflag,s,bw_cusp)
+                        rho_r = get_rho_r_discrete(r,dens_rad,dens,sflag,s,bw_cusp,bw_rad)
                     
                         psi_t_ind = find_nearest(psi_r,psi_t[i])
     
@@ -1388,7 +1423,7 @@ def get_TDE_rate_discrete(name,dens_rad,dens,M_BH,sflag,s,bw_cusp,
             integrands = d_rho_d_t * frac_fac_t
 
             # STEP 7: Evaluate the integral for all values of epsilon (e)
-            integrals[j] = integrate.trapz(integrands,t)
+            integrals[j] = integrate.trapezoid(integrands,t)
     
   
         return integrals
@@ -1406,11 +1441,10 @@ def get_TDE_rate_discrete(name,dens_rad,dens,M_BH,sflag,s,bw_cusp,
 
 
     DF = np.abs(1/(np.sqrt(8)*np.pi**2*M_SOL)*d_int_d_e)
-    #DF = 1/(np.sqrt(8)*np.pi**2)*d_int_d_e
     orb_ens = e[1:-1]
 
 
-    if not no_print:
+    if not quiet:
         print('DF computation complete.')
         print()
 
@@ -1437,23 +1471,20 @@ def get_TDE_rate_discrete(name,dens_rad,dens,M_BH,sflag,s,bw_cusp,
 
     int_fac_rs = []
 
-    #avg_M_sq = get_avg_M_sq()
     avg_M_sq = M_SOL**2
 
-    if not no_print:
+    if not quiet:
         print('Computing q...')
         print()
     time.sleep(1)
     
     def compute_q(r_ref,psi_r_ref,psi_bh_ref,psi_enc_ref,psi_ext_ref,enc_masses):
-        #for i in range(len(orb_ens)):
         for i in tqdm(range(len(orb_ens)), position=0, leave=True, disable=dis):
-            #r_ref = np.geomspace(1e-10,1e37,10**3)
-            #psi_r_ref,psi_bh_ref,psi_enc_ref,psi_ext_ref,enc_masses = get_psi_r_discrete(r_ref,M_BH,dens_rad,dens,sflag,s,bw_cusp)
+
             eps_apo = psi_r_ref
             eps = (psi_bh_ref+psi_enc_ref)/2 + psi_ext_ref
-            J_c_r = np.sqrt(G*enc_masses*r_ref)
-            R_LC_r = (2*M_BH*r_t)/(enc_masses*r_ref)
+            J_c_r = np.sqrt(G*(enc_masses+M_BH)*r_ref)
+            R_LC_r = (2*M_BH*r_t)/((enc_masses+M_BH)*r_ref)
             
             if orb_ens[i] > eps[0]:
                 periods_e[i] = 0
@@ -1488,31 +1519,69 @@ def get_TDE_rate_discrete(name,dens_rad,dens,M_BH,sflag,s,bw_cusp,
                     J_c_e[i] = J_c_r[r_ind_LC]
                 
             
-            periods_e[i] = 2*integrate.quadrature(integrand_p,0,r_apo,args=(r_ref,psi_r_ref,orb_ens[i]),
-                                                  rtol=1,maxiter=400)[0]
-    
+            r2 = np.linspace(1e-10,r_apo,10**5)
+            psi2 = 10**np.interp(np.log10(r2),np.log10(r_ref),np.log10(eps_apo))
+            
+            r2_prime = 2*r2/r_apo - 1
+            psi2_prime = psi2 
+            
+            t_of_r2_prime_temp = np.arcsinh((2*np.arctanh(r2_prime))/(np.pi))
+            psi2_t_temp = psi2_prime
+            
+            sort_t2 = np.argsort(t_of_r2_prime_temp)
+            t_of_r2_prime = t_of_r2_prime_temp[sort_t2]
+            psi2_t = psi2_t_temp[sort_t2]
+            
+            t_of_r2_prime[t_of_r2_prime == -1*np.inf] = -3
+            t_of_r2_prime[t_of_r2_prime == np.inf] = 3
+            
+            prefacs2 = np.sqrt(4*np.arctanh(np.tanh(np.pi/2*np.sinh(t_of_r2_prime)))**2 + np.pi**2)/(2*np.cosh(np.pi/2*np.sinh(t_of_r2_prime))**2)
+            integrands2 = prefacs2/(np.sqrt(2*(psi2_t-orb_ens[i])))
+            integrands2[np.isnan(integrands2)] = 0
+            integrands2[np.isinf(integrands2)] = 0
+            
+            final_t2 = np.linspace(t_of_r2_prime[0],t_of_r2_prime[-1],10**3)
+            
+            final_integrand2 = np.interp(final_t2,t_of_r2_prime,integrands2)
+            
+            periods_e[i] = r_apo*integrate.trapezoid(final_integrand2,final_t2)
+            
             es = np.geomspace(orb_ens[0],orb_ens[i],10**3)
             DF_interp = 10**safe_interp(np.log10(es),np.log10(orb_ens),np.log10(DF))
-            I_0 = integrate.trapz(DF_interp,es)
+            I_0 = integrate.trapezoid(DF_interp,es)
             
     
-            int_fac_r = integrate.quadrature(integrand_mu,r_t,r_apo,args=(r_ref,psi_r_ref,orb_ens[i],orb_ens,DF,I_0,M_BH,avg_M_sq,J_c_e[i]),
+            int_fac_r = integrate.quadrature(integrand_mu,1e-10,r_apo,args=(r_ref,psi_r_ref,orb_ens[i],orb_ens,DF,I_0,M_BH,avg_M_sq,J_c_e[i]),
                                              rtol=1,maxiter=400)[0]
-    
+            
+            # let's pull out the limit factor in mu to compare with Nick
+# =============================================================================
+#             if i == 210:
+#                 pdb.set_trace()
+#                 datay = np.column_stack((r_ref,integrand_mu_temp(r_ref,psi_r_ref,orb_ens[i],orb_ens,DF,I_0,M_BH,avg_M_sq,J_c_e[i])))
+#                 np.savetxt("cusp_mu_lim_fac_log_orbe_{:.3f}.dat".format(orb_ens[i]), datay)
+#                 pdb.set_trace()
+# =============================================================================
+            
+            if r_t > r_apo:
+                int_fac_r = 0
+                
             int_fac_rs.append(int_fac_r)
 
             mu_e[i] = 2*int_fac_r/periods_e[i]
 
         q_discrete = mu_e*periods_e/R_LC_e
 
-        if not no_print:
+
+
+        if not quiet:
             print('q computation complete.')
             print()
         return np.pi/2*q_discrete, np.pi/2*mu_e, periods_e, 
 
     try:
         r_ref = np.geomspace(1e-10,1e37,10**3)
-        psi_r_ref,psi_bh_ref,psi_enc_ref,psi_ext_ref,enc_masses = get_psi_r_discrete(r_ref,M_BH,dens_rad,dens,sflag,s,bw_cusp)
+        psi_r_ref,psi_bh_ref,psi_enc_ref,psi_ext_ref,enc_masses = get_psi_r_discrete(r_ref,M_BH,dens_rad,dens,sflag,s,bw_cusp,bw_rad)
         q, mu_e, periods_e = compute_q(r_ref,psi_r_ref,psi_bh_ref,psi_enc_ref,psi_ext_ref,enc_masses)
     except ValueError as err:
         print(f"An error occurred: {err}")
@@ -1539,10 +1608,10 @@ def get_TDE_rate_discrete(name,dens_rad,dens,M_BH,sflag,s,bw_cusp,
     
         for i in range(len(orb_ens)):
             if q[i] > 1:
-                ln_R_0[i] = (q[i] - np.log(R_LC_e[i]))
+                ln_R_0[i] = q[i] - np.log(R_LC_e[i])
             else:
                 ln_R_0[i] = ((0.186*q[i]+0.824*np.sqrt(q[i])) - np.log(R_LC_e[i]))
-            
+
         return (4*np.pi**2)*periods_e*J_c_e**2*mu_e*(DF/ln_R_0)
 
 
@@ -1564,18 +1633,18 @@ def get_TDE_rate_discrete(name,dens_rad,dens,M_BH,sflag,s,bw_cusp,
     # compute the TDE rates for a pure population of solar mass stars 
     LC_flux_solar = get_LC_flux(orb_ens,G,M_BH,DF,mu_e,q,R_LC_e,periods_e,J_c_e)
     
-    LC_flux_solar[LC_flux_solar < 0] = 0.0
+    #LC_flux_solar[LC_flux_solar < 0] = 0.0
     
-    TDE_rate_solar = integrate.trapz(LC_flux_solar, orb_ens)*SEC_PER_YR
+    TDE_rate_solar = integrate.trapezoid(LC_flux_solar, orb_ens)*SEC_PER_YR
 
-    masses = np.linspace(M_min,M_max,20)*M_SOL
+    masses = np.linspace(M_min,M_max,50)*M_SOL
     R_stars = (masses/M_SOL)**0.8*R_SOL # m
 
     # get the total number of stars contributed to the LC for each mass
     LC_contributions = np.zeros(len(masses))
     LC_flux_per_mass = []
 
-    if not no_print:
+    if not quiet:
         print('Computing LC Flux per mass in PDMF:')
         print()
     time.sleep(1)
@@ -1584,30 +1653,15 @@ def get_TDE_rate_discrete(name,dens_rad,dens,M_BH,sflag,s,bw_cusp,
     #for j in tqdm(range(len(masses)), position=0, leave=True):
     for j in range(len(masses)):
         r_t_adj = R_stars[j]*(M_BH/masses[j])**(1/3)
-        R_LC_e_adj = R_LC_e
-        periods_e_adj = np.zeros(len(orb_ens))
-        
+        R_LC_e_adj = np.zeros(len(R_LC_e))
+
         for i in range(len(orb_ens)):
-            eps_apo = psi_r_ref
             eps = (psi_bh_ref+psi_enc_ref)/2 + psi_ext_ref
-            R_LC_r = (2*M_BH*r_t_adj)/(enc_masses*r_ref)
+            R_LC_r = (2*M_BH*r_t_adj)/((enc_masses+M_BH)*r_ref)
         
             if orb_ens[i] > eps[0]:
                 R_LC_e_adj[i] = 1
-            else:   
-                r_ind = find_nearest(eps_apo,orb_ens[i])
-                if np.abs(eps_apo[r_ind] - orb_ens[i])/orb_ens[i] >= 0.001:
-                    new_r_ref = np.geomspace(r_ref[r_ind]-0.2*r_ref[r_ind],r_ref[r_ind]+0.2*r_ref[r_ind],10**3)
-                    new_eps_apo = 10**safe_interp(np.log10(new_r_ref),np.log10(r_ref),np.log10(eps_apo))
-                    new_r_ind = find_nearest(new_eps_apo,orb_ens[i])
-                    if np.abs(new_eps_apo[new_r_ind] - orb_ens[i])/orb_ens[i] >= 0.001:
-                        print('Possible Error: R_apo calculations.')
-                        print(np.abs(new_eps_apo[new_r_ind] - orb_ens[i])/orb_ens[i])
-                        pdb.set_trace()
-                    r_apo = new_r_ref[new_r_ind]
-                else:
-                    r_apo = r_ref[r_ind]
-                
+            else:          
                 r_ind_LC = find_nearest(eps,orb_ens[i])
                 if np.abs(eps[r_ind_LC] - orb_ens[i])/orb_ens[i] >= 0.001:
                     new_r_ref_LC = np.geomspace(r_ref[r_ind_LC]-0.2*r_ref[r_ind_LC],r_ref[r_ind_LC]+0.2*r_ref[r_ind_LC],10**3)
@@ -1621,18 +1675,20 @@ def get_TDE_rate_discrete(name,dens_rad,dens,M_BH,sflag,s,bw_cusp,
                     R_LC_e_adj[i] = new_R_LC_r[new_r_ind_LC]
                 else:
                     R_LC_e_adj[i] = R_LC_r[r_ind_LC]
-                
-                periods_e_adj[i] = 2*integrate.quadrature(integrand_p,0,r_apo,args=(r_ref,psi_r_ref,orb_ens[i]),
-                                                      maxiter=400,rtol=1)[0]
-           
+
+        DF_adj = DF * (M_SOL/get_avg_M(masses))
+        mu_e_adj = mu_e * (get_avg_M_sq(masses)/M_SOL**2) * (M_SOL/get_avg_M(masses))
+        q_adj = mu_e_adj*periods_e/R_LC_e_adj
         
-        q_adj = mu_e*periods_e/R_LC_e_adj
-        LC_flux_e = get_LC_flux(orb_ens,G,M_BH,DF,mu_e,q_adj,R_LC_e_adj,periods_e_adj,J_c_e)
+        LC_flux_e = get_LC_flux(orb_ens,G,M_BH,DF_adj,mu_e_adj,q_adj,R_LC_e_adj,periods_e,J_c_e)
+        
+        #LC_flux_e[LC_flux_e < 0] = 0.0
+        
         LC_flux_per_mass.append(LC_flux_e)
-        LC_contributions[j] = integrate.trapz(LC_flux_e, orb_ens)
+        LC_contributions[j] = integrate.trapezoid(LC_flux_e, orb_ens)
 
     
-    if not no_print:
+    if not quiet:
         print('LC Flux per Mass computation complete.')
         print()
 
@@ -1640,7 +1696,7 @@ def get_TDE_rate_discrete(name,dens_rad,dens,M_BH,sflag,s,bw_cusp,
     LC_flux_per_mass = np.array(LC_flux_per_mass)
 
     PDMF = get_PDMF(masses)
-    TDE_rate_full = integrate.trapz(LC_contributions*PDMF, masses/M_SOL)*SEC_PER_YR
+    TDE_rate_full = integrate.trapezoid(LC_contributions*PDMF, masses/M_SOL)*SEC_PER_YR
 
     all_output = {'name': [name],
                   'radii': [r_ls],
@@ -1685,90 +1741,7 @@ def get_TDE_rate_discrete(name,dens_rad,dens,M_BH,sflag,s,bw_cusp,
 
 
 
-
-def TDE_rate(input_data,analytic,cpu_count):
-
-    input_data = input_data[0:5]
-    
-    print()
-    print('Beginning TDE rate computation...')
-    print()
-    start = time.time()
-    
-    if analytic:
-        if len(input_data) == 1:
-            output_table = get_TDE_rate_analytic(input_data[0][0],input_data[0][1],input_data[0][2],
-                                                 input_data[0][3],input_data[0][4],input_data[0][5],
-                                                 input_data[0][6],input_data[0][7],input_data[0][8],
-                                                 input_data[0][9],input_data[0][10],input_data[0][11])
-        else:   
-            inputs = []
-            for i in range(len(input_data)):
-                inputs.append((input_data[i][0],input_data[i][1],input_data[i][2],
-                               input_data[i][3],input_data[i][4],input_data[i][5],
-                               input_data[i][6],input_data[i][7],input_data[i][8],
-                               input_data[i][9],input_data[i][10],input_data[0][11]))
-
-            print('Batch Info: ')
-            print('\t # of cores: {}'.format(mp.cpu_count()))
-            print('\t # of runs: {}'.format(len(input_data)))
-            print()
-            with mp.Pool(mp.cpu_count()) as p:
-                results = list(tqdm(p.istarmap(get_TDE_rate_analytic, inputs), 
-                                    total=len(inputs)))
-                p.close()
-                p.join()
-            
-            
-            output_table = Table()
-            for r in results:
-                output_table = vstack([output_table,r])
-
-        
-    else:
-        if len(input_data) == 1:
-            #pdb.set_trace()
-            
-            output_table = get_TDE_rate_discrete(input_data[0][0],input_data[0][1],input_data[0][2],
-                                                 input_data[0][3],input_data[0][4],input_data[0][5],
-                                                 input_data[0][6],input_data[0][7],input_data[0][8],
-                                                 input_data[0][9])
-        else:   
-            inputs = []
-            for i in range(len(input_data)):
-                inputs.append((input_data[i][0],input_data[i][1],input_data[i][2],
-                               input_data[i][3],input_data[i][4],input_data[i][5],
-                               input_data[i][6],input_data[i][7],input_data[i][8],
-                               input_data[i][9]))
-
-            print('Batch Info: ')
-            print('\t # of cores: {}'.format(mp.cpu_count()))
-            print('\t # of runs: {}'.format(len(input_data)))
-            print()
-            with mp.Pool(mp.cpu_count()) as p:
-                results = list(tqdm(p.istarmap(get_TDE_rate_discrete, inputs), 
-                                    total=len(inputs)))
-                p.close()
-                p.join()
-            
-            
-            output_table = Table()
-            for r in results:
-                output_table = vstack([output_table,r])
-
-    
-    end = time.time()
-    print()    
-    print('Done.')
-    print()
-    print('Runtime: {:.2f} minutes / {:.2f} hours'.format(round(end-start,3)/60,
-                                                          round(end-start,3)/3600))
-    print()
-
-    return output_table
-
-
-def run_reptide(in_table, analytic):
+def run_reptide(in_table, analytic, n_energies=1000):
     
     print()
     print('Beginning TDE rate computation...')
@@ -1779,14 +1752,15 @@ def run_reptide(in_table, analytic):
         output_table = get_TDE_rate_analytic(in_table[0][0],in_table[0][1],in_table[0][2],
                                                  in_table[0][3],in_table[0][4],in_table[0][5],
                                                  in_table[0][6],in_table[0][7],in_table[0][8],
-                                                 in_table[0][9],in_table[0][10],in_table[0][11])
+                                                 in_table[0][9],in_table[0][10],in_table[0][11],
+                                                 n_energies)
             
                 
     else:
         output_table = get_TDE_rate_discrete(in_table[0][0],in_table[0][1],in_table[0][2],
                                                  in_table[0][3],in_table[0][4],in_table[0][5],
                                                  in_table[0][6],in_table[0][7],in_table[0][8],
-                                                 in_table[0][9])
+                                                 in_table[0][9],in_table[0][10],n_energies)
 
     
     end = time.time()
@@ -1798,116 +1772,6 @@ def run_reptide(in_table, analytic):
     print()
 
     return output_table
-
-
-def main(in_table, out_fn, cpu_count=mp.cpu_count()):
-    
-    out_table = TDE_rate(in_table, analytic, cpu_count)
-    
-    out_table.write(out_fn, format='fits', overwrite=True)
-    
-    print('Output saved as: '+out_fn)
-    
-    return out_table
-
-
-
-if __name__ == '__main__':
-    
-    
-    ###############################################################################
-    ###############################################################################
-    ########################## USER DEFINED SECTION ###############################
-    ###############################################################################
-    ###############################################################################
-
-    # output filename (specify entire path)
-    out_fn = 'reptide_output.fits'
-
-
-
-    # specify the input type
-    analytic = False
-
-
-    # =================== DISCRETE INPUT PARAMETER ARRAYS ===========================
-
-    model_gal_filename = './master_sample.fits'
-    gal_data = Table.read(model_gal_filename, unit_parse_strict='silent') 
-
-    select = np.ones(len(gal_data)).astype(bool)
-    name = gal_data['name'][select]
-    slope = np.abs(gal_data['slope'][select])
-    M_BH = gal_data['mbh'][select]
-    rads = 10**gal_data['lograd'][select]
-    dens = 10**gal_data['logdens'][select]
-
-    bw_cusp = np.zeros(len(gal_data)).astype(bool)
-    for i in range(len(slope)):
-        if np.abs(slope[i]) >= 2.25:
-            bw_cusp[i] = True
-        else:
-            bw_cusp[i] = False
-
-    # convert everything to SI units for modeling
-    rads_SI = rads*PC_TO_M # m
-    dens_SI = dens*(M_SOL/PC_TO_M**3) # kg/m^3
-    MBH_SI = M_BH*M_SOL # kg
-
-    # define the fixed inner slope flags and values
-    sflag = np.ones(len(name)).astype(bool)
-    s = -slope
-
-    # =============================================================================
-
-
-    # ================== ANALYTIC INPUT PARAMETER ARRAYS ==========================
-
-    model_gal_filename = './master_sample.fits'
-    gal_data = Table.read(model_gal_filename, unit_parse_strict='silent') 
-
-    select = np.ones(len(gal_data)).astype(bool)
-    name = gal_data['name'][select]
-    M_BH = gal_data['mbh'][select]*M_SOL # kg
-    slope = np.abs(gal_data['slope'][select])
-    rho_5pc = gal_data['dens_at_5pc'][select]*M_SOL/PC_TO_M**3 # kg/m^3
-
-
-    bw_cusp = np.zeros(len(gal_data)).astype(bool)
-    for i in range(len(slope)):
-        if np.abs(slope[i]) >= 2.25:
-            bw_cusp[i] = True
-        else:
-            bw_cusp[i] = False
-
-    bw_rads = np.ones(len(name))*5.53285169288588e+16 # 1.79 pc in m (median of just BW sample)
-
-    decay_starts = np.ones(len(name))*50*PC_TO_M
-    decay_widths = np.ones(len(name))*100*PC_TO_M
-
-    # =============================================================================
-
-
-    ###############################################################################
-    ###############################################################################
-    ###############################################################################
-    ###############################################################################
-    ###############################################################################
-    
-    # ============== CREATE THE INPUT .FITS FILE FOR REPTIDE ======================
-
-    if not analytic:
-        in_table = create_discrete_input_table(name, rads_SI, dens_SI, MBH_SI, sflag, s, 
-                                               bw_cusp)
-    else:
-        in_table = create_analytic_input_table(name, slope, rho_5pc, MBH_SI, decay_starts, decay_widths,
-                                               bw_cusp, bw_rads)
-
-    # =============================================================================
-    
-    main(in_table,out_fn,analytic)
-
-
 
 
 
