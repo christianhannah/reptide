@@ -19,6 +19,7 @@ from mgefit.mge_fit_1d import mge_fit_1d
 import matplotlib.pyplot as plt
 
 np.seterr(invalid='ignore')
+np.seterr(divide='ignore')
 
 # CONSTANTS
 PC_TO_M = 3.08567758128e16 
@@ -165,7 +166,7 @@ def get_rho_r_discrete(r,dens_rad,dens,sflag,s,bw_cusp,bw_rad):
     # Interpolate the y-values for the new x-data within the original range
     y_interp = 10**safe_interp(np.log10(r),np.log10(dens_rad),np.log10(dens))
     
-    # Extrapolate the y-values for new x-values greater than the original x-array
+    # Add the exponential decay beyond the original radii
     x_max = np.max(dens_rad)
     x_extrapolate = r[r > x_max]
     y_extrapolate = y_interp[r > x_max]
@@ -183,25 +184,28 @@ def get_rho_r_discrete(r,dens_rad,dens,sflag,s,bw_cusp,bw_rad):
     # set anything beyond 1e9 pc as zero
     y_interp[r > 10**9*PC_TO_M] = 0
 
-    # Extrapolate the y-values for new x-values less than the original x-array
-    #max_ind = find_nearest(dens_rad, 10*PC_TO_M) 
-    max_ind = 20
-    x1 = np.log10(dens_rad[0:max_ind+1])
-    y1 = np.log10(dens[0:max_ind+1])
-    
-    if bw_cusp:
-        slope = -7/4
-    elif not sflag:
+    # Extrapolate using the measured power law slope or fit a slope   
+    if sflag:
+        slope = s
+    else:
+        max_ind = 20
+        x1 = np.log10(dens_rad[0:max_ind+1])
+        y1 = np.log10(dens[0:max_ind+1])
         pars, cov = curve_fit(f=line, xdata=x1, ydata=y1)
         slope = pars[0] 
-    else:
-        slope = s
-        
     x_extrap = r[r < dens_rad[0]]
     y_extrap = y_interp[r < dens_rad[0]]
     y_extrap = 10**(slope * (np.log10(x_extrap) - np.log10(dens_rad[0])) + np.log10(dens[0]))
     y_interp[r < dens_rad[0]] = y_extrap
     
+    # apply the BW cusp
+    if bw_cusp:
+        x_ext = r[r < bw_rad]
+        den_at_bw = y_interp[find_nearest(r,bw_rad)]
+        y_ext = y_interp[r < bw_rad]
+        y_ext = 10**((-7/4) * (np.log10(x_ext) - np.log10(bw_rad)) + np.log10(den_at_bw))
+        y_interp[r < bw_rad] = y_ext
+        
     return y_interp
 
 # =============================================================================
@@ -352,7 +356,12 @@ def get_PDMF(masses):
     return norm_fac*PDMF
 # =============================================================================  
 
-
+# =============================================================================
+# Function to compute the Hills mass
+def get_Hills_mass(masses):
+    rad_fac = (masses/M_SOL)**0.8
+    return ((2.998e8)**2 / (2*G) * (R_SOL*rad_fac)/masses**(1/3))**(3/2)
+# =============================================================================
 
 
 # =============================================================================
@@ -930,7 +939,7 @@ def plot_LC_flux_solar_of_rapo(output_table, xlims=(7,16), ylims=(-50,-20)):
 ###############################################################################
 
 def get_TDE_rate_analytic(name,slope,rho_5pc,M_BH,decay_start,decay_width,bw_cusp,bw_rad,
-                 quiet=True,M_min=0.08,M_max=1,smooth=0.1,n_energies=300):
+                 quiet=True,M_min=0.08,M_max=1,smooth=0.1,n_energies=300,EHS=True):
 
     dis = True
 # =========================== DF Computation ==================================
@@ -1278,9 +1287,16 @@ def get_TDE_rate_analytic(name,slope,rho_5pc,M_BH,decay_start,decay_width,bw_cus
         print()
 
     LC_flux_per_mass = np.array(LC_flux_per_mass)
-
+    
+    if EHS:
+        EHS_flag = np.zeros(len(masses)).astype(bool)
+        Hill_masses = get_Hills_mass(masses)
+        EHS_flag[M_BH<=Hill_masses] = True
+    else:
+        EHS_flag = np.ones(len(masses)).astype(bool)
+    
     PDMF = get_PDMF(masses)
-    TDE_rate_full = integrate.trapezoid(LC_contributions*PDMF, masses/M_SOL)*SEC_PER_YR
+    TDE_rate_full = integrate.trapezoid(LC_contributions[EHS_flag]*PDMF[EHS_flag], masses[EHS_flag]/M_SOL)*SEC_PER_YR
 
     all_output = {'name': [name],
                   'slope': [slope],
@@ -1331,7 +1347,7 @@ def get_TDE_rate_analytic(name,slope,rho_5pc,M_BH,decay_start,decay_width,bw_cus
 
 
 def get_TDE_rate_discrete(name,dens_rad,dens,M_BH,sflag,s,bw_cusp,bw_rad,
-                 quiet=True,M_min=0.08,M_max=1,n_energies=300):
+                 quiet=True,M_min=0.08,M_max=1,n_energies=300,EHS=True):
 
     dis = True
 # =========================== DF Computation ==================================
@@ -1694,9 +1710,16 @@ def get_TDE_rate_discrete(name,dens_rad,dens,M_BH,sflag,s,bw_cusp,bw_rad,
 
 
     LC_flux_per_mass = np.array(LC_flux_per_mass)
-
+    
+    if EHS:
+        EHS_flag = np.zeros(len(masses)).astype(bool)
+        Hill_masses = get_Hills_mass(masses)
+        EHS_flag[M_BH<=Hill_masses] = True
+    else:
+        EHS_flag = np.ones(len(masses)).astype(bool)
+    
     PDMF = get_PDMF(masses)
-    TDE_rate_full = integrate.trapezoid(LC_contributions*PDMF, masses/M_SOL)*SEC_PER_YR
+    TDE_rate_full = integrate.trapezoid(LC_contributions[EHS_flag]*PDMF[EHS_flag], masses[EHS_flag]/M_SOL)*SEC_PER_YR
 
     all_output = {'name': [name],
                   'radii': [r_ls],
@@ -1722,6 +1745,7 @@ def get_TDE_rate_discrete(name,dens_rad,dens,M_BH,sflag,s,bw_cusp,bw_rad,
                   'mu': [mu_e],
                   'R_LC': [R_LC_e],
                   'bw_cusp': [bw_cusp],
+                  'bw_rad': [bw_rad],
                   'sflag': [sflag],
                   's': [s]}
 
@@ -1741,7 +1765,7 @@ def get_TDE_rate_discrete(name,dens_rad,dens,M_BH,sflag,s,bw_cusp,bw_rad,
 
 
 
-def run_reptide(in_table, analytic, n_energies=1000):
+def run_reptide(in_table, analytic, n_energies=1000, EHS=True):
     
     print()
     print('Beginning TDE rate computation...')
@@ -1753,14 +1777,15 @@ def run_reptide(in_table, analytic, n_energies=1000):
                                                  in_table[0][3],in_table[0][4],in_table[0][5],
                                                  in_table[0][6],in_table[0][7],in_table[0][8],
                                                  in_table[0][9],in_table[0][10],in_table[0][11],
-                                                 n_energies)
+                                                 n_energies, EHS)
             
                 
     else:
         output_table = get_TDE_rate_discrete(in_table[0][0],in_table[0][1],in_table[0][2],
                                                  in_table[0][3],in_table[0][4],in_table[0][5],
                                                  in_table[0][6],in_table[0][7],in_table[0][8],
-                                                 in_table[0][9],in_table[0][10],n_energies)
+                                                 in_table[0][9],in_table[0][10],n_energies,
+                                                 EHS)
 
     
     end = time.time()
