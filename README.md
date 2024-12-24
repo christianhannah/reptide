@@ -6,6 +6,7 @@ This software is designed to compute the expected TDE rate for a galaxy based on
 
 ## Features
 
+- Compute loss cone based TDE rates (both with monochromatic stellar mass distributions and a realistic present-day mass function)
 - Convert surface brightness data to 3-D stellar density via MGE fitting.
 - Works with discrete surface brightness and density profiles. 
 
