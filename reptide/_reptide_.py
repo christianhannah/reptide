@@ -1145,7 +1145,8 @@ def get_TDE_rate_analytic(name,slope,rho_5pc,M_BH,decay_start,decay_width,bw_cus
                   'mu': [mu_e],
                   'R_LC': [R_LC_e],
                   'bw_cusp': [bw_cusp],
-                  'bw_rad': [bw_rad]}
+                  'bw_rad': [bw_rad],
+                  'EHS': [EHS]}
 
     output_table = Table(all_output)
 
@@ -1571,7 +1572,8 @@ def get_TDE_rate_discrete(name,dens_rad,dens,M_BH,sflag,s,bw_cusp,bw_rad,
                   'bw_cusp': [bw_cusp],
                   'bw_rad': [bw_rad],
                   'sflag': [sflag],
-                  's': [s]}
+                  's': [s],
+                  'EHS':[EHS]}
 
     output_table = Table(all_output)
 
