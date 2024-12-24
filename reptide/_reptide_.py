@@ -198,10 +198,13 @@ def get_rho_r_discrete(r,dens_rad,dens,sflag,s,bw_cusp,bw_rad):
     y_extrap = 10**(slope * (np.log10(x_extrap) - np.log10(dens_rad[0])) + np.log10(dens[0]))
     y_interp[r < dens_rad[0]] = y_extrap
     
+    r_ref = np.geomspace(bw_rad, dens_rad[0], 10**3)
+    y_ref = 10**(slope * (np.log10(r_ref) - np.log10(dens_rad[0])) + np.log10(dens[0]))
+    den_at_bw = y_ref[0]
+    
     # apply the BW cusp
     if bw_cusp:
         x_ext = r[r < bw_rad]
-        den_at_bw = y_interp[find_nearest(r,bw_rad)]
         y_ext = y_interp[r < bw_rad]
         y_ext = 10**((-7/4) * (np.log10(x_ext) - np.log10(bw_rad)) + np.log10(den_at_bw))
         y_interp[r < bw_rad] = y_ext
@@ -506,7 +509,7 @@ def integrand_mu_temp(r,psi_r,e_DF_i,e_DF,DF,I_0,M_BH,avg_M_sq,J_c_e):
     lim_thing_r = (32*np.pi**2*r**2*G**2*avg_M_sq*np.log(0.4*M_BH/M_SOL))/(3*J_c_e**2)* \
                     (3*I_12_r - I_32_r + 2*I_0)
     
-    return lim_thing_r
+    return lim_thing_r 
 # =============================================================================
 
 
@@ -745,189 +748,6 @@ def find_decay_width(r, slope, rho_5pc, decay_start, bw_cusp, bw_rad, smooth, ga
 
 
 
-# ========================= PLOTTING FUNCTIONS ================================
-
-cmap=plt.get_cmap("turbo")
-labelfontsize=20
-tickfontsize=16
-plt.rcParams['xtick.direction']='in'
-plt.rcParams['ytick.direction']='in'
-plt.rcParams['xtick.labelsize']=tickfontsize
-plt.rcParams['ytick.labelsize']=tickfontsize
-plt.rcParams['figure.figsize']=(8,6)
-plt.rcParams['axes.labelsize']=labelfontsize
-plt.rcParams['ytick.major.width'] = 1.5
-plt.rcParams['xtick.major.width'] = 1.5
-plt.rcParams['ytick.major.size'] = 5
-plt.rcParams['xtick.major.size'] = 5
-plt.rcParams['legend.fontsize'] = 12
-
-
-# =============================================================================
-
-def epsilon_to_rapo(output_table):
-    r_apos = np.zeros(len(output_table['orb_ens'][0]))
-    for i in range(len(output_table['orb_ens'][0])):
-        apo_ind = find_nearest(output_table['psi_tot'][0],output_table['orb_ens'][0][i])
-        r_apos[i] = output_table['psi_rads'][0][apo_ind]/PC_TO_M # pc
-    return r_apos
-
-# =============================================================================
-
-# =============================================================================
-
-def plot_densities_discrete(output_table,xlims=(-10,10),ylims=(-10,20)):
-    plt.figure(dpi=600)
-    plt.xlabel('log(Radius [pc])')
-    plt.ylabel('log($\\rho(r)~[M_\odot/pc^3]$)')
-    plt.xlim(xlims)
-    plt.ylim(ylims)
-    for i in range(len(output_table)):
-        rad_pc = np.array(output_table['radii'])[i]/PC_TO_M
-        dens_msolpc3 = np.array(output_table['dens'])[i]/M_SOL*PC_TO_M**3
-        plt.plot(np.log10(rad_pc),np.log10(dens_msolpc3),color=cmap((float(i)+1)/len(output_table)))
-    plt.show()
-    
-# =============================================================================
-
-# =============================================================================
-
-def plot_densities_analytic(output_table,xlims=(-10,10),ylims=(-10,20)):
-    plt.figure(dpi=600)
-    plt.xlabel('log(Radius [pc])')
-    plt.ylabel('log($\\rho(r)~[M_\odot/pc^3]$)')
-    plt.xlim(xlims)
-    plt.ylim(ylims)
-    #pdb.set_trace()
-    for i in range(len(output_table)):
-        rad_pc = np.geomspace(1e-12,10**10,10**3) # pc
-        dens_msolpc3 = get_rho_r(rad_pc*PC_TO_M, output_table['slope'][0], 
-                                    output_table['rho_5pc'][0], output_table['decay_params'][0], 
-                                    output_table['bw_cusp'][0], output_table['bw_rad'][0], 0.1)/M_SOL*PC_TO_M**3
-        plt.plot(np.log10(rad_pc),np.log10(dens_msolpc3),color=cmap((float(i)+1)/len(output_table)))
-    plt.show()
-
-# =============================================================================
-
-# =============================================================================
-
-def plot_potential(output_table, xlims=(-5,6), ylims=(0,20)):
-    plt.figure(dpi=600)
-    plt.xlabel('log(Radius [pc])')
-    plt.ylabel('log($\psi(r)$ [m$^2$/s$^2$])')
-    plt.xlim(xlims)
-    plt.ylim(ylims)
-    for i in range(len(output_table)):
-        radys = output_table['psi_rads'][i] 
-        psi_tot = output_table['psi_tot'][i]
-        plt.plot(np.log10(radys/PC_TO_M),np.log10(psi_tot),color=cmap((float(i)+1)/len(output_table)))
-    plt.show()
-
-# =============================================================================
-
-# =============================================================================
-
-def plot_DF_of_epsilon(output_table, xlims=(7,16), ylims=(-100,-50)):
-    plt.figure(dpi=600)
-    plt.ylabel('log(f($\epsilon$))')
-    plt.xlabel('log($\epsilon$)')
-    plt.xlim(xlims)
-    plt.ylim(ylims)
-    for i in range(len(output_table)):
-        epsilon = output_table['orb_ens'][i] 
-        DF = output_table['DF'][i] 
-        plt.plot(np.log10(epsilon),np.log10(DF),color=cmap((float(i)+1)/len(output_table)))
-    plt.show()
-
-# =============================================================================
-
-# =============================================================================
-
-def plot_DF_of_rapo(output_table, xlims=(7,16), ylims=(0,20)):
-    plt.figure(dpi=600)
-    plt.ylabel('log(f($\epsilon$))')
-    plt.xlabel('log(r$_{apo}$ [pc])')
-    plt.xlim(xlims)
-    plt.ylim(ylims)
-    for i in range(len(output_table)):
-        r_apos = epsilon_to_rapo(output_table[i])
-        DF = output_table['DF'][i] 
-        plt.plot(np.log10(r_apos),np.log10(DF),color=cmap((float(i)+1)/len(output_table)))
-    plt.show()
-
-# =============================================================================
-
-# =============================================================================
-
-def plot_q_of_epsilon(output_table, xlims=(7,16), ylims=(-10,10)):
-    plt.figure(dpi=600)
-    plt.ylabel('log(q)')
-    plt.xlabel('log($\epsilon$)')
-    plt.xlim(xlims)
-    plt.ylim(ylims)
-    for i in range(len(output_table)):
-        epsilon = output_table['orb_ens'][i] 
-        qs = output_table['q'][i] 
-        plt.plot(np.log10(epsilon),np.log10(qs),color=cmap((float(i)+1)/len(output_table)))
-    plt.show()
-
-# =============================================================================
-
-# =============================================================================
-
-def plot_q_of_rapo(output_table, xlims=(7,16), ylims=(0,20)):
-    plt.figure(dpi=600)
-    plt.ylabel('log(q)')
-    plt.xlabel('log($\epsilon$)')
-    plt.xlim(xlims)
-    plt.ylim(ylims)
-    for i in range(len(output_table)):
-        r_apos = epsilon_to_rapo(output_table[i])
-        qs = output_table['q'][i] 
-        plt.plot(np.log10(r_apos),np.log10(qs),color=cmap((float(i)+1)/len(output_table)))
-    plt.show()
-
-# =============================================================================
-
-# =============================================================================
-
-def plot_LC_flux_solar_of_epsilon(output_table, xlims=(7,16), ylims=(-50,-20)):
-    # plot the LC flux for solar mass stars
-    plt.figure(dpi=600)
-    plt.ylabel('$log(\mathcal{F}(\epsilon)$)')
-    plt.xlabel('log($\epsilon$)')
-    plt.xlim(xlims)
-    plt.ylim(ylims)
-    for i in range(len(output_table)):
-        epsilon = output_table['orb_ens'][i] 
-        LC_flux_solar = output_table['LC_flux_solar'][i] 
-        #plt.plot(np.log10(epsilon),np.log10(LC_flux_solar),color=cmap((float(i)+1)/len(output_table)),label=str(i))
-        plt.plot(np.log10(epsilon),LC_flux_solar,color=cmap((float(i)+1)/len(output_table)),label=str(i))
-    plt.legend()
-    plt.show()
-
-# =============================================================================
-
-# =============================================================================
-
-def plot_LC_flux_solar_of_rapo(output_table, xlims=(7,16), ylims=(-50,-20)):
-    # plot the LC flux for solar mass stars
-    plt.figure(dpi=600)
-    plt.ylabel('$log(\mathcal{F}(\epsilon)$)')
-    plt.xlabel('log($\epsilon$)')
-    plt.xlim(xlims)
-    plt.ylim(ylims)
-    for i in range(len(output_table)):
-        r_apos = epsilon_to_rapo(output_table[i])
-        LC_flux_solar = output_table['LC_flux_solar'][i] 
-        plt.plot(np.log10(r_apos),np.log10(LC_flux_solar),color=cmap((float(i)+1)/len(output_table)))
-    plt.show()
-
-# =============================================================================
-
-# ======================= END OF PLOTTING FUNCTIONS ===========================
-
-
 ###############################################################################
 ###############################################################################
 ###############################################################################
@@ -939,7 +759,7 @@ def plot_LC_flux_solar_of_rapo(output_table, xlims=(7,16), ylims=(-50,-20)):
 ###############################################################################
 
 def get_TDE_rate_analytic(name,slope,rho_5pc,M_BH,decay_start,decay_width,bw_cusp,bw_rad,
-                 quiet=True,M_min=0.08,M_max=1,smooth=0.1,n_energies=300,EHS=True):
+                 quiet=True,M_min=0.08,M_max=1,smooth=0.1,n_energies=1000,EHS=False):
 
     dis = True
 # =========================== DF Computation ==================================
@@ -958,7 +778,7 @@ def get_TDE_rate_analytic(name,slope,rho_5pc,M_BH,decay_start,decay_width,bw_cus
     e_min = psis[-1]
     
     # specify the range of specific orbital energies to consider
-    e = np.geomspace(e_min,e_max,n_energies)
+    e = np.geomspace(e_min,e_max,n_energies+2)
     
     # STEP 1: Define wide range of t
     t_bound = 1.5
@@ -968,7 +788,7 @@ def get_TDE_rate_analytic(name,slope,rho_5pc,M_BH,decay_start,decay_width,bw_cus
     integrals = np.zeros_like(e)
     
     r_min = 1000 # meters
-    r_max = 10**10*PC_TO_M # meters
+    r_max = 10**12*PC_TO_M # meters
     num_rad = 10**4
     r_ls = np.geomspace(r_min,r_max,num_rad)
     
@@ -1347,7 +1167,7 @@ def get_TDE_rate_analytic(name,slope,rho_5pc,M_BH,decay_start,decay_width,bw_cus
 
 
 def get_TDE_rate_discrete(name,dens_rad,dens,M_BH,sflag,s,bw_cusp,bw_rad,
-                 quiet=True,M_min=0.08,M_max=1,n_energies=300,EHS=True):
+                 quiet=True,M_min=0.08,M_max=1,n_energies=1000,EHS=False):
 
     dis = True
 # =========================== DF Computation ==================================
@@ -1364,6 +1184,10 @@ def get_TDE_rate_discrete(name,dens_rad,dens,M_BH,sflag,s,bw_cusp,bw_rad,
     ind_for_e_max = find_nearest(radys, r_for_e_max)
     e_max = psis[ind_for_e_max]
     e_min = psis[-1]
+    
+    #psi_out = get_psi_r_discrete(radys,M_BH,dens_rad,dens,sflag,s,bw_cusp,bw_rad)
+    #pdb.set_trace()
+    
     
     # specify the range of specific orbital energies to consider
     e = np.geomspace(e_min,e_max,n_energies)
@@ -1459,6 +1283,9 @@ def get_TDE_rate_discrete(name,dens_rad,dens,M_BH,sflag,s,bw_cusp,bw_rad,
     DF = np.abs(1/(np.sqrt(8)*np.pi**2*M_SOL)*d_int_d_e)
     orb_ens = e[1:-1]
 
+    e_ind = find_nearest(orb_ens,5.58e13)
+
+    #pdb.set_trace()
 
     if not quiet:
         print('DF computation complete.')
@@ -1571,13 +1398,10 @@ def get_TDE_rate_discrete(name,dens_rad,dens,M_BH,sflag,s,bw_cusp,bw_rad,
                                              rtol=1,maxiter=400)[0]
             
             # let's pull out the limit factor in mu to compare with Nick
-# =============================================================================
-#             if i == 210:
-#                 pdb.set_trace()
-#                 datay = np.column_stack((r_ref,integrand_mu_temp(r_ref,psi_r_ref,orb_ens[i],orb_ens,DF,I_0,M_BH,avg_M_sq,J_c_e[i])))
-#                 np.savetxt("cusp_mu_lim_fac_log_orbe_{:.3f}.dat".format(orb_ens[i]), datay)
-#                 pdb.set_trace()
-# =============================================================================
+            if i == e_ind:
+                pdb.set_trace()
+                datay = np.column_stack((r_ref,integrand_mu_temp(r_ref,psi_r_ref,orb_ens[i],orb_ens,DF,I_0,M_BH,avg_M_sq,J_c_e[i])))
+                np.savetxt("cusp_mu_lim_fac_orbe_{:.3e}.dat".format(orb_ens[i]), datay)
             
             if r_t > r_apo:
                 int_fac_r = 0
@@ -1765,7 +1589,7 @@ def get_TDE_rate_discrete(name,dens_rad,dens,M_BH,sflag,s,bw_cusp,bw_rad,
 
 
 
-def run_reptide(in_table, analytic, n_energies=1000, EHS=True):
+def run_reptide(in_table, analytic, n_energies=1000, EHS=False):
     
     print()
     print('Beginning TDE rate computation...')
@@ -1784,8 +1608,8 @@ def run_reptide(in_table, analytic, n_energies=1000, EHS=True):
         output_table = get_TDE_rate_discrete(in_table[0][0],in_table[0][1],in_table[0][2],
                                                  in_table[0][3],in_table[0][4],in_table[0][5],
                                                  in_table[0][6],in_table[0][7],in_table[0][8],
-                                                 in_table[0][9],in_table[0][10],n_energies,
-                                                 EHS)
+                                                 in_table[0][9],in_table[0][10],
+                                                 n_energies,EHS)
 
     
     end = time.time()
