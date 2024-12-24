@@ -8,7 +8,7 @@ Example script highlighting the use of reptide.
 @author: christian
 """
 
-import _reptide_ as rep
+import _reptide_final as rep
 import numpy as np
 
 
@@ -16,13 +16,15 @@ import numpy as np
 # =================== DEFINE INPUT PARAMETER ARRAYS ===========================
 # =============================================================================
 
-# NOTE: All values used for the input arrays must be in a list
+# NOTE: All values used for the input arrays must be in SI units when applicable
 
-name = np.array(['Example Galaxy'])
-slope = np.array([1.77])
+name = 'Example Galaxy'
+
+# define the black hole mass
+M_BH = 8e7 # in M_sol
 
 # define radii in pc
-rads = np.array([   1.20667367,    1.29232318,    1.38405208,    1.48229189,
+rads = np.array([1.20667367,    1.29232318,    1.38405208,    1.48229189,
                  1.58750474,    1.70018559,    1.8208645 ,    1.95010919,
                  2.08852764,    2.23677102,    2.39553669,    2.56557152,
                  2.74767539,    2.94270498,    3.15157773,    3.37527624,
@@ -47,6 +49,7 @@ rads = np.array([   1.20667367,    1.29232318,    1.38405208,    1.48229189,
                  503.89976414,  539.66649286,  577.97193856,  618.99629896,
                  662.93256224,  709.98741482,  760.38221368,  814.35402771,
                  872.1567529 ,  934.06230675, 1000.3619074 , 1071.36744364])
+
 # define densities in M_sol/pc^3
 dens = np.array([3.48758898e+04, 3.27770162e+04, 3.08985182e+04, 2.92051984e+04,
                  2.76494174e+04, 2.61790555e+04, 2.47460158e+04, 2.33131915e+04,
@@ -74,23 +77,22 @@ dens = np.array([3.48758898e+04, 3.27770162e+04, 3.08985182e+04, 2.92051984e+04,
                  7.58500797e-01, 6.48120633e-01, 5.55822130e-01, 4.78435190e-01,
                  4.13821234e-01, 3.60147072e-01, 3.15481558e-01, 2.77747397e-01])
     
-# if the slope is too steep, set the bw_cusp parameter to true 
-if np.abs(slope) >= 2.25:
-    bw_cusp = np.array([True])
-else:
-    bw_cusp = np.array([False])
-
-# define the black hole mass
-M_BH = np.array([8e7]) # in M_sol
-
 # define the inner slope flag to specify a fixed inner power-law density slope (s) 
-sflag = np.array([True])
-s = np.array([-1*slope])
+sflag = True
+s = 1.77 # slope must always be positive
 
+# if the slope is too steep, set the bw_cusp parameter to true 
+# Note that slopes >= 2.25 extrapolated all the way to the MBH cause a divergent TDE rate 
+if s >= 2.25:
+    bw_cusp = True
+else:
+    bw_cusp = False
+
+bw_rad = 5e+16 # 1.79 pc in m 
 
 # convert everything to SI units for modeling
-rads_SI = [rads*rep.PC_TO_M] # m
-dens_SI = [dens*(rep.M_SOL/rep.PC_TO_M**3)] # kg/m^3
+rads_SI = rads*rep.PC_TO_M # m
+dens_SI = dens*(rep.M_SOL/rep.PC_TO_M**3) # kg/m^3
 MBH_SI = M_BH*rep.M_SOL # kg
 
 
@@ -105,7 +107,7 @@ MBH_SI = M_BH*rep.M_SOL # kg
 
 # Create the input fits files using the built in functions
 in_table = rep.create_discrete_input_table(name, rads_SI, dens_SI, MBH_SI, sflag, s, 
-                                           bw_cusp, no_print=False)
+                                           bw_cusp, bw_rad, quiet=False)
 
 # =============================================================================
 # =============================================================================
@@ -116,7 +118,7 @@ in_table = rep.create_discrete_input_table(name, rads_SI, dens_SI, MBH_SI, sflag
 # ========================= CALL REPTIDE ======================================
 # =============================================================================
 
-output_table = rep.run_reptide(in_table, analytic=False)
+output_table = rep.run_reptide(in_table, analytic=False, n_energies=100, EHS=False)
 
 # =============================================================================
 # =============================================================================

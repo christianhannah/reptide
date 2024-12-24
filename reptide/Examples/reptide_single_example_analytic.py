@@ -16,26 +16,28 @@ import numpy as np
 # =================== DEFINE INPUT PARAMETER ARRAYS ===========================
 # =============================================================================
 
-# NOTE: All values used for the input arrays must be in a list
+# NOTE: All values used for the input arrays must be in SI units when applicable
 
-name = np.array(['Example Galaxy'])
-slope = np.array([1.77])
-rho_5pc =  np.array([3000])*rep.M_SOL/rep.PC_TO_M**3 # in kg/m^3
-    
-# if the slope is too steep, set the bw_cusp parameter to true 
-if np.abs(slope) >= 2.25:
-    bw_cusp = np.array([True])
-else:
-    bw_cusp = np.array([False])
-
-bw_rad = np.array([5.53285169288588e+16]) # 1.79 pc in m (median of just BW sample)
+name = 'Example Galaxy'
+slope = 1.77 # slope must always be positive
+rho_5pc =  3000*rep.M_SOL/rep.PC_TO_M**3 # in kg/m^3
 
 # define the black hole mass
-MBH_SI = np.array([8e7])*rep.M_SOL # in M_sol
+MBH_SI = 8e7*rep.M_SOL # in kg    
 
 # define the start and width of the exponential decay
-decay_start = np.array([50])*rep.PC_TO_M
-decay_width = np.array([100])*rep.PC_TO_M
+decay_start = 50*rep.PC_TO_M
+decay_width = 100*rep.PC_TO_M
+
+# if the slope is too steep, set the bw_cusp parameter to true 
+# Note that slopes >= 2.25 extrapolated all the way to the MBH cause a divergent TDE rate 
+if slope >= 2.25:
+    bw_cusp = True
+else:
+    bw_cusp = False
+
+bw_rad = 5e+16 # 1.79 pc in m 
+
 
 # =============================================================================
 # =============================================================================
@@ -49,7 +51,7 @@ decay_width = np.array([100])*rep.PC_TO_M
 # Create the input fits files using the built in functions
 in_table = rep.create_analytic_input_table(name, slope, rho_5pc, MBH_SI, 
                                            decay_start, decay_width, bw_cusp, 
-                                           bw_rad, no_print=False)
+                                           bw_rad, quiet=False)
 
 # =============================================================================
 # =============================================================================
@@ -60,7 +62,7 @@ in_table = rep.create_analytic_input_table(name, slope, rho_5pc, MBH_SI,
 # ========================= CALL REPTIDE ======================================
 # =============================================================================
 
-output_table = rep.run_reptide(in_table, analytic=True)
+output_table = rep.run_reptide(in_table, analytic=True, n_energies=100, EHS=False)
 
 # =============================================================================
 # =============================================================================

@@ -678,7 +678,7 @@ def create_discrete_input_table(names, rads, dens, M_BH, sflag, s, bw_cusp=False
 
     if not isinstance(names, np.ndarray): names = np.array([names])
     if len(rads.shape) == 1: rads = np.array([rads])
-    if len(dens.shape) == 1: dens = np.array([[dens]])
+    if len(dens.shape) == 1: dens = np.array([dens])
     if not isinstance(M_BH, np.ndarray): M_BH = np.array([M_BH])
     if not isinstance(sflag, np.ndarray): sflag = np.array([sflag])
     if not isinstance(s, np.ndarray): s = np.array([s])
@@ -1191,7 +1191,7 @@ def get_TDE_rate_discrete(name,dens_rad,dens,M_BH,sflag,s,bw_cusp,bw_rad,
     
     
     # specify the range of specific orbital energies to consider
-    e = np.geomspace(e_min,e_max,n_energies)
+    e = np.geomspace(e_min,e_max,n_energies+2)
 
     # STEP 1: Define wide range of t
     t_bound = 1.5
@@ -1399,10 +1399,10 @@ def get_TDE_rate_discrete(name,dens_rad,dens,M_BH,sflag,s,bw_cusp,bw_rad,
                                              rtol=1,maxiter=400)[0]
             
             # let's pull out the limit factor in mu to compare with Nick
-            if i == e_ind:
-                pdb.set_trace()
-                datay = np.column_stack((r_ref,integrand_mu_temp(r_ref,psi_r_ref,orb_ens[i],orb_ens,DF,I_0,M_BH,avg_M_sq,J_c_e[i])))
-                np.savetxt("cusp_mu_lim_fac_orbe_{:.3e}.dat".format(orb_ens[i]), datay)
+            #if i == e_ind:
+            #    pdb.set_trace()
+            #    datay = np.column_stack((r_ref,integrand_mu_temp(r_ref,psi_r_ref,orb_ens[i],orb_ens,DF,I_0,M_BH,avg_M_sq,J_c_e[i])))
+            #    np.savetxt("cusp_mu_lim_fac_orbe_{:.3e}.dat".format(orb_ens[i]), datay)
             
             if r_t > r_apo:
                 int_fac_r = 0
