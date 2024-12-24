@@ -11,17 +11,6 @@ This software is designed to compute the expected TDE rate for a galaxy based on
 
 ## Installation
 
-Make sure you have the following packages installed:
-- numpy
-- scipy
-- astropy
-- tqdm
-- mgefit
-
-This can be accomplished with the requirements.txt file, which gives specific version information.
-
-Then use pip to install reptide as follows:
-
 pip install git+https://github.com/christianhannah/reptide.git
 
 ## Examples
