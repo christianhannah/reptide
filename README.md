@@ -1,4 +1,4 @@
-![alt text](https://github.com/christianhannah/reptide/blob/main/reptide/Images/REPTIDE_LOGO_FINAL_white.png?raw=true)
+![alt text](https://github.com/christianhannah/reptide/blob/main/reptide/Images/REPTIDE_LOGO_FINAL.png?raw=true)
 
 ## Overview
 
