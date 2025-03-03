@@ -17,9 +17,12 @@ from tqdm import tqdm
 import time
 from mgefit.mge_fit_1d import mge_fit_1d
 import matplotlib.pyplot as plt
+from scipy.special import gamma
+from scipy.special import jn_zeros
 
 np.seterr(invalid='ignore')
 np.seterr(divide='ignore')
+np.seterr(over='ignore')
 
 # CONSTANTS
 PC_TO_M = 3.08567758128e16 
@@ -138,23 +141,72 @@ def get_n_min(arr, n):
 
 # =============================================================================   
 
+# Sérsic profile definition
+def sersic_profile(r, b_n, n, reff, I_eff):
+    return I_eff * np.exp(-b_n * ((r / reff)**(1 / n) - 1))
 
+def get_rho_r(r, slope, rho_5pc, decay_start, n, reff, bw_cusp, bw_rad, smooth):
+    """
+    Computes the density profile with a transition to a Sérsic profile at decay_start.
+
+    Parameters:
+        r (array-like): Radial distances.
+        slope (float): Power-law slope.
+        rho_5pc (float): Density at 5 pc.
+        decay_start (float): Transition radius to the Sérsic profile.
+        n (float): Sérsic index.
+        reff (float): Effective radius for the Sérsic profile.
+        bw_cusp (bool): Whether to include the BW cusp correction.
+        bw_rad (float): Radius for BW cusp transition.
+        smooth (float): Smoothness parameter for the power-law transition.
+
+    Returns:
+        array-like: Density profile.
+    """
+    pc5_in_m = 1.54283879064e+17  # 5 pc in meters
+
+    # Sérsic profile constant b_n
+    b_n = 1.992*n-0.3271
+    
+    # Calculate I_eff to match power-law at decay_start
+    rho_power_law = rho_5pc * (decay_start / pc5_in_m)**(-slope)
+    #I_eff = rho_power_law * np.exp(b_n) / ((decay_start / reff)**(1 / n))
+    
+    I_eff = rho_power_law * np.exp(b_n * ((decay_start / reff)**(1 / n) - 1))
+    
+    #pdb.set_trace()
+
+    if bw_cusp:
+        r_b = bw_rad
+        rho_b = rho_5pc * (r_b / pc5_in_m)**(-slope)
+        return np.piecewise(r,[r >= decay_start, r < decay_start],
+                            [lambda r, slope, rho_b, r_b, smooth, n, reff, I_eff: sersic_profile(r, b_n, n, reff, I_eff),
+                             lambda r, slope, rho_b, r_b, smooth, n, reff, I_eff: rho_b * (r / r_b)**(-7 / 4) *
+                             (0.5 * (1 + (r / r_b)**(1 / smooth)))**((7 / 4 - slope) * smooth)],
+                            slope, rho_b, r_b, smooth, n, reff, I_eff)
+    else:
+        return np.piecewise(r,[r >= decay_start, r < decay_start],
+                            [lambda r, slope, rho_5pc, smooth, n, reff, I_eff: sersic_profile(r, b_n, n, reff, I_eff),
+                             lambda r, slope, rho_5pc, smooth, n, reff, I_eff: rho_5pc * (r / pc5_in_m)**(-slope)],
+                            slope, rho_5pc, smooth, n, reff, I_eff)
 
 # =============================================================================
 # function to return power-law inner density profile
-def get_rho_r(r,slope,rho_5pc,decay_start,decay_width,bw_cusp,bw_rad,smooth):
-    pc5_in_m = 1.54283879064e+17
-    if bw_cusp:
-        # 5.53285169288588e+16 # 1.79 pc in m (median of just BW sample)
-        r_b = bw_rad
-        rho_b = rho_5pc*(r_b/pc5_in_m)**(-slope)
-        return np.piecewise(r, [r>=decay_start, r<decay_start], 
-                        [lambda r,slope,rho_b,r_b,smooth,decay_start,decay_width : rho_b*(r/r_b)**(-7/4)*(0.5*(1+(r/r_b)**(1/smooth)))**((7/4-slope)*smooth)*np.exp(-(r-decay_start)/decay_width), 
-                         lambda r,slope,rho_b,r_b,smooth,decay_start,decay_width : rho_b*(r/r_b)**(-7/4)*(0.5*(1+(r/r_b)**(1/smooth)))**((7/4-slope)*smooth)], slope,rho_b,r_b,smooth,decay_start,decay_width)
-    else:
-        return np.piecewise(r, [r>=decay_start, r<decay_start], 
-                        [lambda r,slope,rho_5pc,smooth,decay_start,decay_width : rho_5pc*(r/pc5_in_m)**(-slope)*np.exp(-(r-decay_start)/decay_width), 
-                         lambda r,slope,rho_5pc,smooth,decay_start,decay_width : rho_5pc*(r/pc5_in_m)**(-slope)], slope,rho_5pc,smooth,decay_start,decay_width)
+# =============================================================================
+# def get_rho_r(r,slope,rho_5pc,decay_start,decay_width,bw_cusp,bw_rad,smooth):
+#     pc5_in_m = 1.54283879064e+17
+#     if bw_cusp:
+#         # 5.53285169288588e+16 # 1.79 pc in m (median of just BW sample)
+#         r_b = bw_rad
+#         rho_b = rho_5pc*(r_b/pc5_in_m)**(-slope)
+#         return np.piecewise(r, [r>=decay_start, r<decay_start], 
+#                         [lambda r,slope,rho_b,r_b,smooth,decay_start,decay_width : rho_b*(r/r_b)**(-7/4)*(0.5*(1+(r/r_b)**(1/smooth)))**((7/4-slope)*smooth)*np.exp(-(r-decay_start)/decay_width), 
+#                          lambda r,slope,rho_b,r_b,smooth,decay_start,decay_width : rho_b*(r/r_b)**(-7/4)*(0.5*(1+(r/r_b)**(1/smooth)))**((7/4-slope)*smooth)], slope,rho_b,r_b,smooth,decay_start,decay_width)
+#     else:
+#         return np.piecewise(r, [r>=decay_start, r<decay_start], 
+#                         [lambda r,slope,rho_5pc,smooth,decay_start,decay_width : rho_5pc*(r/pc5_in_m)**(-slope)*np.exp(-(r-decay_start)/decay_width), 
+#                          lambda r,slope,rho_5pc,smooth,decay_start,decay_width : rho_5pc*(r/pc5_in_m)**(-slope)], slope,rho_5pc,smooth,decay_start,decay_width)
+# =============================================================================
 # =============================================================================
 
 # =============================================================================
@@ -173,11 +225,9 @@ def get_rho_r_discrete(r,dens_rad,dens,sflag,s,bw_cusp,bw_rad):
     y_extrapolate = y_extrapolate*np.exp(-(x_extrapolate - x_max)/(1000*PC_TO_M))
     
     # uncomment below to extrapolate the outer power-law density slope rather than exp decay
-# =============================================================================
-#     pars1, cov1 = curve_fit(f=line, xdata=np.log10(dens_rad[-5:]), ydata=np.log10(dens[-5:]))
-#     slope1 = pars1[0] 
-#     y_extrapolate = 10**(slope1 * (np.log10(x_extrapolate) - np.log10(dens_rad[-1])) + np.log10(dens[-1]))
-# =============================================================================
+    #pars1, cov1 = curve_fit(f=line, xdata=np.log10(dens_rad[-5:]), ydata=np.log10(dens[-5:]))
+    #slope1 = pars1[0] 
+    #y_extrapolate = 10**(slope1 * (np.log10(x_extrapolate) - np.log10(dens_rad[-1])) + np.log10(dens[-1]))
     
     y_interp[r > x_max] = y_extrapolate
     
@@ -198,12 +248,11 @@ def get_rho_r_discrete(r,dens_rad,dens,sflag,s,bw_cusp,bw_rad):
     y_extrap = 10**(slope * (np.log10(x_extrap) - np.log10(dens_rad[0])) + np.log10(dens[0]))
     y_interp[r < dens_rad[0]] = y_extrap
     
-    r_ref = np.geomspace(bw_rad, dens_rad[0], 10**3)
-    y_ref = 10**(slope * (np.log10(r_ref) - np.log10(dens_rad[0])) + np.log10(dens[0]))
-    den_at_bw = y_ref[0]
-    
     # apply the BW cusp
     if bw_cusp:
+        r_ref = np.geomspace(bw_rad, dens_rad[0], 10**3)
+        y_ref = 10**(slope * (np.log10(r_ref) - np.log10(dens_rad[0])) + np.log10(dens[0]))
+        den_at_bw = y_ref[0]
         x_ext = r[r < bw_rad]
         y_ext = y_interp[r < bw_rad]
         y_ext = 10**((-7/4) * (np.log10(x_ext) - np.log10(bw_rad)) + np.log10(den_at_bw))
@@ -215,14 +264,14 @@ def get_rho_r_discrete(r,dens_rad,dens,sflag,s,bw_cusp,bw_rad):
 
 
 # =============================================================================
-def get_encm_pot_integrand(r,slope,rho_5pc,decay_start,decay_width,bw_cusp,bw_rad,smooth):
-    return r**2*get_rho_r(r,slope,rho_5pc,decay_start,decay_width,bw_cusp,bw_rad,smooth)    
+def get_encm_pot_integrand(r,slope,rho_5pc,decay_start,n,reff,bw_cusp,bw_rad,smooth):
+    return r**2*get_rho_r(r,slope,rho_5pc,decay_start,n,reff,bw_cusp,bw_rad,smooth)    
 # function to compute the mass enclosed from density profile 
-def get_enc_mass(r,slope,rho_5pc,max_ind,decay_start,decay_width,bw_cusp,bw_rad,smooth):
+def get_enc_mass(r,slope,rho_5pc,max_ind,decay_start,n,reff,bw_cusp,bw_rad,smooth):
     if max_ind == 0:
         return 0
     else:
-        return 4*np.pi*integrate.trapezoid(get_encm_pot_integrand(r[0:max_ind+1],slope,rho_5pc,decay_start,decay_width,bw_cusp,bw_rad,smooth), r[0:max_ind+1])
+        return 4*np.pi*integrate.trapezoid(get_encm_pot_integrand(r[0:max_ind+1],slope,rho_5pc,decay_start,n,reff,bw_cusp,bw_rad,smooth), r[0:max_ind+1])
 # =============================================================================
 
 # =============================================================================
@@ -240,12 +289,12 @@ def get_enc_mass_discrete(r,dens_rad,dens,max_ind,sflag,s,bw_cusp,bw_rad):
 
 
 # =============================================================================
-def get_ext_pot_integrand(r,slope,rho_5pc,min_ind,decay_start,decay_width,bw_cusp,bw_rad,smooth):
-    return r*get_rho_r(r,slope,rho_5pc,decay_start,decay_width,bw_cusp,bw_rad,smooth)   
+def get_ext_pot_integrand(r,slope,rho_5pc,min_ind,decay_start,n,reff,bw_cusp,bw_rad,smooth):
+    return r*get_rho_r(r,slope,rho_5pc,decay_start,n,reff,bw_cusp,bw_rad,smooth)   
 # function to compute the contribution to the potential of the galaxy at 
 # larger radii
-def get_ext_potential(r,slope,rho_5pc,min_ind,decay_start,decay_width,bw_cusp,bw_rad,smooth):
-    return 4*np.pi*G*integrate.trapezoid(get_ext_pot_integrand(r[min_ind:],slope,rho_5pc,min_ind,decay_start,decay_width,bw_cusp,bw_rad,smooth),r[min_ind:])
+def get_ext_potential(r,slope,rho_5pc,min_ind,decay_start,n,reff,bw_cusp,bw_rad,smooth):
+    return 4*np.pi*G*integrate.trapezoid(get_ext_pot_integrand(r[min_ind:],slope,rho_5pc,min_ind,decay_start,n,reff,bw_cusp,bw_rad,smooth),r[min_ind:])
 # =============================================================================
 
 # =============================================================================
@@ -262,18 +311,18 @@ def get_ext_potential_discrete(r,dens_rad,dens,min_ind,sflag,s,bw_cusp,bw_rad):
 
 # =============================================================================
 # derive the total gravitational potential (psi(r)) as a function of r
-def get_psi_r(r,M_BH,slope,rho_5pc,decay_start,decay_width,bw_cusp,bw_rad,smooth):
+def get_psi_r(r,M_BH,slope,rho_5pc,decay_start,n,reff,bw_cusp,bw_rad,smooth):
     
     psi_1 = G*M_BH/r
     
     M_enc = np.zeros_like(r)
     for i in range(len(M_enc)):
-        M_enc[i] = get_enc_mass(r,slope,rho_5pc,i,decay_start,decay_width,bw_cusp,bw_rad,smooth)
+        M_enc[i] = get_enc_mass(r,slope,rho_5pc,i,decay_start,n,reff,bw_cusp,bw_rad,smooth)
     psi_2 = G*M_enc/r
 
     psi_3 = np.zeros_like(r)
     for i in range(len(psi_3)):
-        psi_3[i] = get_ext_potential(r,slope,rho_5pc,i,decay_start,decay_width,bw_cusp,bw_rad,smooth)
+        psi_3[i] = get_ext_potential(r,slope,rho_5pc,i,decay_start,n,reff,bw_cusp,bw_rad,smooth)
     
     # remove zero values to avoid divide by zero when taking log10
     psi_1[psi_1 == 0] = 1e-300
@@ -301,9 +350,6 @@ def get_psi_r_discrete(r,M_BH,dens_rad,dens,sflag,s,bw_cusp,bw_rad):
     
     return psi_1+psi_2+psi_3,psi_1,psi_2,psi_3,M_enc
 # =============================================================================
-
-
-
 
 
 
@@ -585,8 +631,8 @@ def read_dat_file(filename):
 # =============================================================================
 # Function to create the input fits file for an analytic run
 
-def create_analytic_input_table(names, slopes, rho_5pc, M_BHs, decay_start, decay_width, bw_cusp=False, bw_rad=1e-300,
-                      quiet=True, M_min=0.08, M_max=1, smooth=0.1):
+def create_analytic_input_table(names, slopes, rho_5pc, M_BHs, decay_start, reff, bw_cusp=False, bw_rad=1e-300,
+                      quiet=True, M_min=0.08, M_max=1, smooth=0.1, n=1):
     """
     Create a FITS table with specified columns and values.
 
@@ -613,7 +659,8 @@ def create_analytic_input_table(names, slopes, rho_5pc, M_BHs, decay_start, deca
     if not isinstance(rho_5pc, np.ndarray): rho_5pc = np.array([rho_5pc])
     if not isinstance(M_BHs, np.ndarray): M_BHs = np.array([M_BHs])
     if not isinstance(decay_start, np.ndarray): decay_start = np.array([decay_start])
-    if not isinstance(decay_width, np.ndarray): decay_width = np.array([decay_width])
+    if not isinstance(n, np.ndarray): n = np.array([n])
+    if not isinstance(reff, np.ndarray): reff = np.array([reff])
     if not isinstance(quiet, np.ndarray): quiet = np.array([quiet])
     if not isinstance(M_min, np.ndarray): M_min = np.array([M_min])
     if not isinstance(M_max, np.ndarray): M_max = np.array([M_max])
@@ -626,7 +673,7 @@ def create_analytic_input_table(names, slopes, rho_5pc, M_BHs, decay_start, deca
     col3 = fits.Column(name='rho_5pc', format='D', array=np.array(rho_5pc))
     col4 = fits.Column(name='M_BH', format='D', array=np.array(M_BHs))        
     col5 = fits.Column(name='decay_start', format='D', array=np.array(decay_start))
-    col6 = fits.Column(name='decay_width', format='D', array=np.array(decay_width)) 
+    col6 = fits.Column(name='reff', format='D', array=np.array(reff)) 
     if isinstance(bw_cusp, bool):
         col7 = fits.Column(name='bw_cusp', format='L', array=np.ones_like(names).astype(bool)*bw_cusp)
         col8 = fits.Column(name='bw_rad', format='D', array=np.ones_like(names).astype(float)*bw_rad)
@@ -637,8 +684,10 @@ def create_analytic_input_table(names, slopes, rho_5pc, M_BHs, decay_start, deca
     col10 = fits.Column(name='M_min', format='D', array=np.ones_like(names).astype(float) * M_min)
     col11 = fits.Column(name='M_max', format='D', array=np.ones_like(names).astype(float) * M_max)
     col12 = fits.Column(name='smooth', format='D', array=np.ones_like(names).astype(float) * smooth)
+    col13 = fits.Column(name='n', format='I', array=np.ones_like(names).astype(int) * n)
+    
     # Create the FITS table with the defined columns
-    cols = fits.ColDefs([col1, col2, col3, col4, col5, col6, col7, col8, col9, col10, col11, col12])
+    cols = fits.ColDefs([col1, col2, col3, col4, col5, col6, col7, col8, col9, col10, col11, col12, col13])
     hdu = fits.BinTableHDU.from_columns(cols)
 
     # Write the FITS table to a file
@@ -720,11 +769,11 @@ def create_discrete_input_table(names, rads, dens, M_BH, sflag, s, bw_cusp=False
 # Functions to compute the decay width necessary to ensure correct galaxy mass in
 # the analytic version
 
-def integral_difference(decay_width, r, slope, rho_5pc, decay_start, bw_cusp, bw_rad, smooth, galm):
-    tot_mass = get_enc_mass(r,slope,rho_5pc,-2,decay_start,decay_width,bw_cusp,bw_rad,smooth)
+def integral_difference(reff, r, slope, rho_5pc, decay_start, bw_cusp, bw_rad, smooth, galm):
+    tot_mass = get_enc_mass(r,slope,rho_5pc,-2,decay_start,reff,bw_cusp,bw_rad,smooth)
     return tot_mass - galm
 
-def find_decay_width(r, slope, rho_5pc, decay_start, bw_cusp, bw_rad, smooth, galm, initial_guess=3e16):
+def find_reff(r, slope, rho_5pc, decay_start, bw_cusp, bw_rad, smooth, galm, initial_guess=3e16):
     sol = fsolve(integral_difference, initial_guess, args=(r, slope, rho_5pc, decay_start, bw_cusp, bw_rad, smooth, galm))
     return sol[0]
 
@@ -737,7 +786,7 @@ def find_decay_width(r, slope, rho_5pc, decay_start, bw_cusp, bw_rad, smooth, ga
 # bw_rad = 0
 # bw_cusp = False
 # smooth = 0.1
-# dw = find_decay_width(r, slope, rho_5pc , decay_start, bw_cusp, bw_rad, smooth, galm)
+# dw = find_reff(r, slope, rho_5pc , decay_start, bw_cusp, bw_rad, smooth, galm)
 # 
 # =============================================================================
 
@@ -758,8 +807,8 @@ def find_decay_width(r, slope, rho_5pc, decay_start, bw_cusp, bw_rad, smooth, ga
 ###############################################################################
 ###############################################################################
 
-def get_TDE_rate_analytic(name,slope,rho_5pc,M_BH,decay_start,decay_width,bw_cusp,bw_rad,
-                 quiet=True,M_min=0.08,M_max=1,smooth=0.1,n_energies=1000,EHS=False):
+def get_TDE_rate_analytic(name,slope,rho_5pc,M_BH,decay_start,reff,bw_cusp,bw_rad,
+                 quiet=True,M_min=0.08,M_max=1,smooth=0.1,n_energies=1000,EHS=False,n=1):
 
     dis = True
 # =========================== DF Computation ==================================
@@ -771,7 +820,7 @@ def get_TDE_rate_analytic(name,slope,rho_5pc,M_BH,decay_start,decay_width,bw_cus
     # use the potential at the tidal radius and 1,000,000 pc to set the orbital energy bounds
     r_t = R_SOL*(M_BH/M_SOL)**(1/3)
     radys = np.geomspace(r_t/PC_TO_M,10**6,10**4)*PC_TO_M
-    psis = get_psi_r(radys,M_BH,slope,rho_5pc,decay_start,decay_width,bw_cusp,bw_rad,smooth)[0]
+    psis = get_psi_r(radys,M_BH,slope,rho_5pc,decay_start,n,reff,bw_cusp,bw_rad,smooth)[0]
     r_for_e_max = 100*r_t
     ind_for_e_max = find_nearest(radys, r_for_e_max)
     e_max = psis[ind_for_e_max]
@@ -792,7 +841,7 @@ def get_TDE_rate_analytic(name,slope,rho_5pc,M_BH,decay_start,decay_width,bw_cus
     num_rad = 10**4
     r_ls = np.geomspace(r_min,r_max,num_rad)
     
-    psi_r_init,psi_bh_init,psi_enc_init,psi_ext_init,enc_masses = get_psi_r(r_ls,M_BH,slope,rho_5pc,decay_start,decay_width,bw_cusp,bw_rad,smooth)
+    psi_r_init,psi_bh_init,psi_enc_init,psi_ext_init,enc_masses = get_psi_r(r_ls,M_BH,slope,rho_5pc,decay_start,n,reff,bw_cusp,bw_rad,smooth)
 
     if not quiet:
         dis = False
@@ -824,7 +873,7 @@ def get_TDE_rate_analytic(name,slope,rho_5pc,M_BH,decay_start,decay_width,bw_cus
                         r = np.arange(0,num_r,1)*spacing+(r_closest-0.2*r_closest)
                         psi_r = 10**safe_interp(np.log10(r),np.log10(r_ls),np.log10(psi_r_init))
                         
-                        rho_r = get_rho_r(r,slope,rho_5pc,decay_start,decay_width,bw_cusp,bw_rad,smooth)
+                        rho_r = get_rho_r(r,slope,rho_5pc,decay_start,n,reff,bw_cusp,bw_rad,smooth)
                     
                         rho_r[np.where(rho_r == 0.0)] = 1e-323
                     
@@ -995,7 +1044,7 @@ def get_TDE_rate_analytic(name,slope,rho_5pc,M_BH,decay_start,decay_width,bw_cus
     
     try:
         r_ref = np.geomspace(1e-10,1e37,10**3)
-        psi_r_ref,psi_bh_ref,psi_enc_ref,psi_ext_ref,enc_masses = get_psi_r(r_ref,M_BH,slope,rho_5pc,decay_start,decay_width,bw_cusp,bw_rad,smooth)
+        psi_r_ref,psi_bh_ref,psi_enc_ref,psi_ext_ref,enc_masses = get_psi_r(r_ref,M_BH,slope,rho_5pc,decay_start,n,reff,bw_cusp,bw_rad,smooth)
         q, mu_e, periods_e = compute_q(r_ref,psi_r_ref,psi_bh_ref,psi_enc_ref,psi_ext_ref,enc_masses)
         
         #q, mu_e, periods_e = compute_q()
@@ -1011,6 +1060,7 @@ def get_TDE_rate_analytic(name,slope,rho_5pc,M_BH,decay_start,decay_width,bw_cus
 
 
 #%%
+
 # ==================== LC FLUX Computation ===============================
 # =============================================================================
 # Compute the flux of stars that scatter into the loss cone per unit time 
@@ -1019,14 +1069,14 @@ def get_TDE_rate_analytic(name,slope,rho_5pc,M_BH,decay_start,decay_width,bw_cus
 # =============================================================================
 
     def get_LC_flux(orb_ens,G,M_BH,DF,mu_e,q,R_LC_e,periods_e,J_c_e):
-        ln_R_0 = np.zeros_like(orb_ens)
-    
-        for i in range(len(orb_ens)):
-            if q[i] > 1:
-                ln_R_0[i] = (q[i] - np.log(R_LC_e[i]))
-            else:
-                ln_R_0[i] = ((0.186*q[i]+0.824*np.sqrt(q[i])) - np.log(R_LC_e[i]))
-            
+
+        a_m = jn_zeros(0,1000)
+        xi_q = np.zeros(len(q))
+        for i in range(len(xi_q)):
+            xi_q[i] = 1 - 4*np.sum((np.exp(-a_m**2*q[i]/4)/a_m**2))
+        
+        ln_R_0 = q/xi_q - np.log(R_LC_e)
+
         return (4*np.pi**2)*periods_e*J_c_e**2*mu_e*(DF/ln_R_0)
 
 
@@ -1124,7 +1174,8 @@ def get_TDE_rate_analytic(name,slope,rho_5pc,M_BH,decay_start,decay_width,bw_cus
                   'smooth': [smooth],
                   'M_BH': [M_BH],
                   'decay_start': [decay_start],
-                  'decay_width': [decay_width],
+                  'reff': [reff],
+                  'n': [n],
                   'TDE_rate_solar': [TDE_rate_solar],
                   'TDE_rate_full': [TDE_rate_full],
                   'orb_ens': [orb_ens],
@@ -1444,14 +1495,13 @@ def get_TDE_rate_discrete(name,dens_rad,dens,M_BH,sflag,s,bw_cusp,bw_rad,
 # =============================================================================
 
     def get_LC_flux(orb_ens,G,M_BH,DF,mu_e,q,R_LC_e,periods_e,J_c_e):
-        #J_c = G*M_BH/np.sqrt(2*orb_ens)
-        ln_R_0 = np.zeros_like(orb_ens)
-    
-        for i in range(len(orb_ens)):
-            if q[i] > 1:
-                ln_R_0[i] = q[i] - np.log(R_LC_e[i])
-            else:
-                ln_R_0[i] = ((0.186*q[i]+0.824*np.sqrt(q[i])) - np.log(R_LC_e[i]))
+        
+        a_m = jn_zeros(0,10000)
+        xi_q = np.zeros(len(q))
+        for i in range(len(xi_q)):
+            xi_q[i] = 1 - 4*np.sum((np.exp(-a_m**2*q[i]/4)/a_m**2))
+        
+        ln_R_0 = q/xi_q - np.log(R_LC_e)
 
         return (4*np.pi**2)*periods_e*J_c_e**2*mu_e*(DF/ln_R_0)
 
@@ -1603,7 +1653,7 @@ def run_reptide(in_table, analytic, n_energies=1000, EHS=False):
                                                  in_table[0][3],in_table[0][4],in_table[0][5],
                                                  in_table[0][6],in_table[0][7],in_table[0][8],
                                                  in_table[0][9],in_table[0][10],in_table[0][11],
-                                                 n_energies, EHS)
+                                                 n_energies, EHS, in_table[0][12])
             
                 
     else:
